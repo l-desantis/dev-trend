@@ -191,6 +191,12 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# DevTrend project
+*.db
+*.db-journal
+data/raw/
+data/processed/
+
 # PyPI configuration file
 .pypirc
 
