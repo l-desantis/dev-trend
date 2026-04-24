@@ -1,12 +1,15 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_ENV_FILE = Path(__file__).parent.parent / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_ignore_empty=True,
@@ -45,10 +48,12 @@ class Settings(BaseSettings):
     @field_validator("telegram_allowed_chat_ids", mode="before")
     @classmethod
     def parse_chat_ids(cls, v: object) -> list[int]:
-        if not v:
+        if not v and v != 0:
             return []
         if isinstance(v, str):
             return [int(x.strip()) for x in v.split(",") if x.strip()]
+        if isinstance(v, (int, float)):
+            return [int(v)]
         if isinstance(v, list):
             return [int(x) for x in v]
         return []

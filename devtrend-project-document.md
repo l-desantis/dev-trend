@@ -207,7 +207,6 @@ devtrend/
 │   ├── test_agent_graph.py
 │   └── test_bot_handlers.py
 │
-├── requirements.txt
 ├── README.md
 └── .env.example
 ```
@@ -583,7 +582,7 @@ Phase 1 evaluation is manual and checklist-based. A replay harness using mock hi
 ## 17. Implementation Roadmap
 
 ### Milestone 1 — Foundation
-- [ ] Create `.env.example`, `requirements.txt`, `config.py`
+- [ ] Create `.env.example`, `config.py`
 - [ ] Verify and extend `.gitignore` (`*.db`, `data/raw/`, `data/processed/`)
 - [ ] Scaffold FastAPI app with health endpoint
 - [ ] SQLAlchemy models and SQLite setup (including `NicheScoreHistory`)
@@ -657,7 +656,7 @@ Phase 1 is complete when ALL of the following are true:
 
 ## 19. Recommended First Implementation Order
 
-1. Create `.env`, `requirements.txt`, `config.py`, `db.py`, `models.py`; extend `.gitignore`
+1. Create `.env`, `config.py`, `db.py`, `models.py`; extend `.gitignore`
 2. Write ADR-001 (name) and ADR-002 (event loop) in `docs/decisions.md`
 3. Scaffold FastAPI app — health endpoint working
 4. Connect Telegram bot — `/start` and `/help` with allowlist middleware; scaffold `MockLLMAdapter`

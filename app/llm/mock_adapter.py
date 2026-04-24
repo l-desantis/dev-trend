@@ -1,3 +1,5 @@
+from typing import Any
+
 from app.llm.base import LLMAdapter
 
 _FIXTURE_BRIEF = (
@@ -10,11 +12,11 @@ _FIXTURE_BRIEF = (
 
 
 class MockLLMAdapter(LLMAdapter):
-    async def generate_brief(self, context: dict) -> str:
+    async def generate_brief(self, context: dict[str, Any]) -> str:
         return _FIXTURE_BRIEF
 
-    async def summarize_evidence(self, items: list) -> str:
+    async def summarize_evidence(self, items: list[Any]) -> str:
         return "Mock evidence summary."
 
-    async def review_brief(self, brief: str) -> dict:
+    async def review_brief(self, brief: str) -> dict[str, object]:
         return {"has_issues": False, "gaps": []}

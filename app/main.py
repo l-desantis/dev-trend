@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -11,15 +12,19 @@ from app.db import init_db
 
 
 def _configure_logging() -> None:
+    settings = get_settings()
+    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    logging.basicConfig(format="%(message)s", level=log_level)
     structlog.configure(
         processors=[
+            structlog.stdlib.filter_by_level,
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.BoundLogger,
+        wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        logger_factory=structlog.stdlib.LoggerFactory(),
     )
 
 
@@ -53,7 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         log.info("Telegram bot stopped", component="main")
 
 
-app = FastAPI(title="DevTrend", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="DevTrend", version=get_settings().version, lifespan=lifespan)
 app.include_router(health_router)
 
 

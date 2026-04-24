@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
@@ -39,7 +39,7 @@ class SourceItem(Base):
     body: Mapped[str | None] = mapped_column(Text)
     url: Mapped[str | None] = mapped_column(String(1000))
     created_at: Mapped[datetime | None] = mapped_column(DateTime)
-    ingested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     niche_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("niches.id"), index=True)
     metadata_json: Mapped[Any | None] = mapped_column(JSON)
 
@@ -93,7 +93,7 @@ class OpportunityBrief(Base):
     evidence_json: Mapped[Any | None] = mapped_column(JSON)
     forecast_label: Mapped[str | None] = mapped_column(String(50))
     has_issues: Mapped[bool] = mapped_column(Boolean, default=False)
-    generated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     model_name: Mapped[str | None] = mapped_column(String(100))
 
     niche: Mapped["Niche"] = relationship(back_populates="briefs")
