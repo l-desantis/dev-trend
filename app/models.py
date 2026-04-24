@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -44,6 +44,10 @@ class SourceItem(Base):
     metadata_json: Mapped[Any | None] = mapped_column(JSON)
 
     niche: Mapped["Niche | None"] = relationship(back_populates="source_items")
+
+    __table_args__ = (
+        UniqueConstraint("source_type", "external_id", name="uq_source_items_source_external"),
+    )
 
     def __repr__(self) -> str:
         return f"<SourceItem source={self.source_type!r} id={self.external_id!r}>"

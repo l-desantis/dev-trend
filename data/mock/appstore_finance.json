@@ -1,0 +1,50 @@
+[
+  {
+    "external_id": "appstore-finance-001",
+    "title": "PocketLedger",
+    "description": "Local first finance app for offline budget management and net worth tracker",
+    "category": "finance",
+    "growth_index": 0.44,
+    "install_proxy": 11300,
+    "rating": 4.5,
+    "review_sentiment": 0.72,
+    "competitor_density": 3,
+    "updated_at": "2026-04-20T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-finance-002",
+    "title": "SubZero",
+    "description": "Subscription manager and recurring bills tracker to cancel subscriptions and reduce saas spend",
+    "category": "finance",
+    "growth_index": 0.56,
+    "install_proxy": 14700,
+    "rating": 4.6,
+    "review_sentiment": 0.75,
+    "competitor_density": 2,
+    "updated_at": "2026-04-21T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-finance-003",
+    "title": "BudgetShield",
+    "description": "Privacy-first personal finance app and expense tracker with finance privacy encryption",
+    "category": "finance",
+    "growth_index": 0.33,
+    "install_proxy": 8400,
+    "rating": 4.3,
+    "review_sentiment": 0.65,
+    "competitor_density": 4,
+    "updated_at": "2026-04-17T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-finance-004",
+    "title": "MacroMoney",
+    "description": "Billable hours tracker and freelancer invoicing tool with timesheet app features",
+    "category": "finance",
+    "growth_index": 0.27,
+    "install_proxy": 6200,
+    "rating": 4.1,
+    "review_sentiment": 0.58,
+    "competitor_density": 5,
+    "updated_at": "2026-04-16T00:00:00Z"
+  }
+]

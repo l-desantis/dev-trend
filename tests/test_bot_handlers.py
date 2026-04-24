@@ -1,9 +1,12 @@
 import pytest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from telegram.ext import ApplicationHandlerStop
 
-from app.bot.handlers import help_handler, start_handler
+from app.bot.handlers import help_handler, sources_handler, start_handler
 from app.bot.middleware import _allowlist_check
+from app.db import init_db
+from app.ingestion.base import ConnectorRunRegistry, RunStatus
 
 
 def _make_update(chat_id: int | None) -> MagicMock:
@@ -95,3 +98,29 @@ class TestHelpHandler:
         update = _make_update(chat_id=12345)
         update.effective_message = None
         await help_handler(update, mock_context)
+
+
+class TestSourcesHandler:
+    async def test_empty_registry_never_run(self, mock_context: MagicMock) -> None:
+        await init_db()
+        mock_context.application = MagicMock()
+        mock_context.application.bot_data = {}
+        update = _make_update(chat_id=12345)
+        await sources_handler(update, mock_context)
+        update.effective_message.reply_text.assert_called_once()
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert "never run" in text
+
+    async def test_ok_status_shows_items(self, mock_context: MagicMock) -> None:
+        await init_db()
+        registry = ConnectorRunRegistry()
+        registry.mark_running("github")
+        registry.mark_success("github", items=42, duration=1.5)
+
+        mock_context.application = MagicMock()
+        mock_context.application.bot_data = {"run_registry": registry}
+        update = _make_update(chat_id=12345)
+        await sources_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert "42" in text
+        assert "github" in text

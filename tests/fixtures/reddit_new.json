@@ -1,0 +1,45 @@
+{
+  "data": {
+    "children": [
+      {
+        "data": {
+          "name": "t3_abc001",
+          "title": "Launched my AI habit tracker with streak gamification",
+          "selftext": "Built an ai wellness coaching app with habit tracker features. Looking for feedback.",
+          "permalink": "/r/startups/comments/abc001/launched_my_ai_habit_tracker/",
+          "subreddit": "startups",
+          "ups": 342,
+          "num_comments": 78,
+          "author": "founder1",
+          "created_utc": 1745500000
+        }
+      },
+      {
+        "data": {
+          "name": "t3_abc002",
+          "title": "Local LLM running on-device — my experience with private ai",
+          "selftext": "Running local llm and edge ai app on my phone. Performance is surprisingly good.",
+          "permalink": "/r/SideProject/comments/abc002/local_llm_running/",
+          "subreddit": "SideProject",
+          "ups": 198,
+          "num_comments": 45,
+          "author": "hacker42",
+          "created_utc": 1745503600
+        }
+      },
+      {
+        "data": {
+          "name": "t3_abc003",
+          "title": "My subscription manager app just hit 1000 users",
+          "selftext": "Built a subscription tracker to help people cancel subscriptions and track recurring bills.",
+          "permalink": "/r/Entrepreneur/comments/abc003/subscription_manager/",
+          "subreddit": "Entrepreneur",
+          "ups": 567,
+          "num_comments": 112,
+          "author": "indie_maker",
+          "created_utc": 1745507200
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "external_id": "appstore-education-001",
+    "title": "SpacedLearn",
+    "description": "Second brain app with networked notes and spaced repetition for personal knowledge management",
+    "category": "education",
+    "growth_index": 0.43,
+    "install_proxy": 10500,
+    "rating": 4.5,
+    "review_sentiment": 0.70,
+    "competitor_density": 3,
+    "updated_at": "2026-04-20T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-education-002",
+    "title": "DocSpark",
+    "description": "API documentation platform and openapi explorer with swagger integration and api testing",
+    "category": "education",
+    "growth_index": 0.52,
+    "install_proxy": 6700,
+    "rating": 4.6,
+    "review_sentiment": 0.76,
+    "competitor_density": 3,
+    "updated_at": "2026-04-22T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-education-003",
+    "title": "NoCodeKit",
+    "description": "No code app builder for low code mobile development and visual app builder for ios and android",
+    "category": "education",
+    "growth_index": 0.65,
+    "install_proxy": 15300,
+    "rating": 4.4,
+    "review_sentiment": 0.71,
+    "competitor_density": 4,
+    "updated_at": "2026-04-21T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-education-004",
+    "title": "EduFlow",
+    "description": "Codebase documentation generator with engineering wiki and onboarding tool for dev teams",
+    "category": "education",
+    "growth_index": 0.37,
+    "install_proxy": 4900,
+    "rating": 4.3,
+    "review_sentiment": 0.65,
+    "competitor_density": 2,
+    "updated_at": "2026-04-18T00:00:00Z"
+  }
+]

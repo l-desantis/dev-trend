@@ -1,0 +1,50 @@
+[
+  {
+    "external_id": "appstore-productivity-001",
+    "title": "InkFlow",
+    "description": "AI writing assistant and writing assistant for content generator and ai copywriting tasks",
+    "category": "productivity",
+    "growth_index": 0.58,
+    "install_proxy": 19600,
+    "rating": 4.6,
+    "review_sentiment": 0.74,
+    "competitor_density": 6,
+    "updated_at": "2026-04-21T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-productivity-002",
+    "title": "BrainMap",
+    "description": "Personal knowledge management and PKM tool with zettelkasten and knowledge graph features",
+    "category": "productivity",
+    "growth_index": 0.46,
+    "install_proxy": 13200,
+    "rating": 4.5,
+    "review_sentiment": 0.73,
+    "competitor_density": 4,
+    "updated_at": "2026-04-20T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-productivity-003",
+    "title": "AsyncDesk",
+    "description": "Async collaboration platform for remote work tool and distributed team communication",
+    "category": "productivity",
+    "growth_index": 0.39,
+    "install_proxy": 9100,
+    "rating": 4.3,
+    "review_sentiment": 0.67,
+    "competitor_density": 5,
+    "updated_at": "2026-04-19T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-productivity-004",
+    "title": "TimeMark",
+    "description": "Time tracking and time tracker with project time billing and toggl alternative features",
+    "category": "productivity",
+    "growth_index": 0.31,
+    "install_proxy": 7800,
+    "rating": 4.2,
+    "review_sentiment": 0.62,
+    "competitor_density": 5,
+    "updated_at": "2026-04-17T00:00:00Z"
+  }
+]

@@ -1,0 +1,50 @@
+[
+  {
+    "external_id": "appstore-entertainment-001",
+    "title": "PixelForge",
+    "description": "AI image generation and generative art tool with stable diffusion and text to image pipeline",
+    "category": "entertainment",
+    "growth_index": 0.74,
+    "install_proxy": 28000,
+    "rating": 4.7,
+    "review_sentiment": 0.81,
+    "competitor_density": 5,
+    "updated_at": "2026-04-23T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-entertainment-002",
+    "title": "GameForge",
+    "description": "Indie game dev toolkit with asset pipeline and godot integration for indie gamedev projects",
+    "category": "entertainment",
+    "growth_index": 0.48,
+    "install_proxy": 11200,
+    "rating": 4.5,
+    "review_sentiment": 0.73,
+    "competitor_density": 3,
+    "updated_at": "2026-04-20T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-entertainment-003",
+    "title": "SoundScape",
+    "description": "Bedtime routine and sleep quality soundscape app with insomnia app and sleep optimisation features",
+    "category": "entertainment",
+    "growth_index": 0.36,
+    "install_proxy": 8700,
+    "rating": 4.4,
+    "review_sentiment": 0.68,
+    "competitor_density": 4,
+    "updated_at": "2026-04-19T00:00:00Z"
+  },
+  {
+    "external_id": "appstore-entertainment-004",
+    "title": "MoodBoard",
+    "description": "AI art and ai design tool for mood tracker boards and ai photo editor with generative art styles",
+    "category": "entertainment",
+    "growth_index": 0.55,
+    "install_proxy": 16400,
+    "rating": 4.6,
+    "review_sentiment": 0.77,
+    "competitor_density": 4,
+    "updated_at": "2026-04-21T00:00:00Z"
+  }
+]

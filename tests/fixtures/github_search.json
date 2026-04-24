@@ -1,0 +1,42 @@
+{
+  "total_count": 3,
+  "incomplete_results": false,
+  "items": [
+    {
+      "id": 123456,
+      "full_name": "owner/ai-habit-tracker",
+      "description": "AI habit tracker with adaptive streaks and wellness coaching",
+      "html_url": "https://github.com/owner/ai-habit-tracker",
+      "stargazers_count": 312,
+      "forks_count": 45,
+      "language": "Python",
+      "topics": ["ai", "habits", "wellness"],
+      "pushed_at": "2026-04-20T10:00:00Z",
+      "created_at": "2025-01-15T08:00:00Z"
+    },
+    {
+      "id": 234567,
+      "full_name": "owner/local-llm-app",
+      "description": "Run local LLM on device with ollama integration for private ai inference",
+      "html_url": "https://github.com/owner/local-llm-app",
+      "stargazers_count": 890,
+      "forks_count": 123,
+      "language": "Rust",
+      "topics": ["llm", "local-ai", "privacy"],
+      "pushed_at": "2026-04-22T14:30:00Z",
+      "created_at": "2025-03-10T12:00:00Z"
+    },
+    {
+      "id": 345678,
+      "full_name": "owner/dev-onboarding-tool",
+      "description": "Developer onboarding automation with runbook generator and codebase documentation",
+      "html_url": "https://github.com/owner/dev-onboarding-tool",
+      "stargazers_count": 156,
+      "forks_count": 22,
+      "language": "TypeScript",
+      "topics": ["devtools", "onboarding"],
+      "pushed_at": "2026-04-19T09:00:00Z",
+      "created_at": "2025-06-20T16:00:00Z"
+    }
+  ]
+}

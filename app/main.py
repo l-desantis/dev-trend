@@ -1,7 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
+import httpx
 import structlog
 import structlog.stdlib
 from fastapi import FastAPI
@@ -10,6 +12,13 @@ from app.api.routes_health import router as health_router
 from app.config import get_settings
 from app.db import init_db
 
+from app.ingestion.appstore_mock_connector import AppStoreMockConnector
+from app.ingestion.base import ConnectorRunRegistry
+from app.ingestion.github_connector import GithubConnector
+from app.ingestion.hn_connector import HNConnector
+from app.ingestion.reddit_connector import RedditConnector
+from app.ingestion.scheduler import build_scheduler
+from app.features.niche_builder import NicheMatcher, sync_niches_from_yaml
 
 def _configure_logging() -> None:
     settings = get_settings()
@@ -32,16 +41,30 @@ def _configure_logging() -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _configure_logging()
     log = structlog.get_logger("main")
-
     settings = get_settings()
+
     await init_db()
     log.info("Database initialised", component="main")
+
+    count = await sync_niches_from_yaml(Path("data/niches.yaml"))
+    log.info("Niches synced", component="main", count=count)
+
+    http_client = httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s)
+    registry = ConnectorRunRegistry()
+    matcher = await NicheMatcher.from_db()
+
+    connectors = [
+        GithubConnector(http_client, matcher, registry),
+        HNConnector(http_client, matcher, registry),
+        RedditConnector(http_client, matcher, registry),
+        AppStoreMockConnector(http_client, matcher, registry),
+    ]
 
     bot_app = None
     if settings.telegram_bot_token:
         from app.bot.bot import build_application
-
         bot_app = build_application()
+        bot_app.bot_data["run_registry"] = registry
         await bot_app.initialize()
         await bot_app.start()
         await bot_app.updater.start_polling()
@@ -49,13 +72,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         log.warning("TELEGRAM_BOT_TOKEN not set — bot disabled", component="main")
 
+    scheduler = build_scheduler(connectors, registry, settings)
+    scheduler.start()
+    log.info("Scheduler started", component="main")
+
     yield
 
+    scheduler.shutdown(wait=False)
     if bot_app is not None:
         await bot_app.updater.stop()
         await bot_app.stop()
         await bot_app.shutdown()
         log.info("Telegram bot stopped", component="main")
+    await http_client.aclose()
 
 
 app = FastAPI(title="DevTrend", version=get_settings().version, lifespan=lifespan)

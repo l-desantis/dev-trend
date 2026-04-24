@@ -1,0 +1,37 @@
+{
+  "hits": [
+    {
+      "objectID": "39000001",
+      "title": "Show HN: AI code review assistant for pull requests",
+      "story_text": "Built an automated code review bot that provides llm code review comments on PRs",
+      "url": "https://example.com/ai-code-review",
+      "created_at_i": 1745500000,
+      "points": 245,
+      "num_comments": 87,
+      "author": "devuser1"
+    },
+    {
+      "objectID": "39000002",
+      "title": "Local LLM inference on consumer hardware — benchmarks",
+      "story_text": "Running local ai with ollama on a MacBook M3 — latency and memory results",
+      "url": "https://example.com/local-llm-bench",
+      "created_at_i": 1745503600,
+      "points": 512,
+      "num_comments": 134,
+      "author": "mlresearcher"
+    },
+    {
+      "objectID": "39000003",
+      "title": "Ask HN: Best personal knowledge management tools in 2026?",
+      "story_text": "Looking for PKM and second brain tools — comparing obsidian vs logseq vs roam research",
+      "url": null,
+      "created_at_i": 1745507200,
+      "points": 89,
+      "num_comments": 203,
+      "author": "knowledge_seeker"
+    }
+  ],
+  "nbHits": 3,
+  "page": 0,
+  "nbPages": 1
+}
