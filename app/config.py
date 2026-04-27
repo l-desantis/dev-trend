@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     scoring_cron_hour: int = 2
     scoring_cron_minute: int = 15
 
+    # Agent / brief generation
+    llm_provider: str = "ollama"          # "ollama" | "mock"
+    brief_cron_hour: int = 3
+    brief_cron_minute: int = 0
+    brief_per_niche_timeout_s: float = 90.0
+    brief_max_evidence_items: int = 5
+    brief_min_summary_chars: int = 50
+
     # Logging
     log_level: str = "INFO"
 
