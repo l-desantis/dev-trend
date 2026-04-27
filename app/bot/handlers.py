@@ -72,8 +72,71 @@ async def briefing_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def niches_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_message:
-        await update.effective_message.reply_text(_COMING_SOON)
+    from sqlalchemy import select, func
+    from app.db import get_session
+    from app.models import Niche, NicheScoreHistory, OpportunityBrief
+    from app.bot.formatter import bold, format_score, md_escape, trend_arrow, truncate
+
+    settings = get_settings()
+
+    async with get_session() as session:
+        latest_score = (
+            select(
+                NicheScoreHistory.niche_id,
+                func.max(NicheScoreHistory.scored_at).label("max_at"),
+            )
+            .group_by(NicheScoreHistory.niche_id)
+            .subquery()
+        )
+        score_rows = await session.execute(
+            select(NicheScoreHistory)
+            .join(
+                latest_score,
+                (NicheScoreHistory.niche_id == latest_score.c.niche_id)
+                & (NicheScoreHistory.scored_at == latest_score.c.max_at),
+            )
+        )
+        scores = {r[0].niche_id: r[0].score_total for r in score_rows.all()}
+
+        latest_brief = (
+            select(
+                OpportunityBrief.niche_id,
+                func.max(OpportunityBrief.generated_at).label("max_at"),
+            )
+            .group_by(OpportunityBrief.niche_id)
+            .subquery()
+        )
+        brief_rows = await session.execute(
+            select(OpportunityBrief)
+            .join(
+                latest_brief,
+                (OpportunityBrief.niche_id == latest_brief.c.niche_id)
+                & (OpportunityBrief.generated_at == latest_brief.c.max_at),
+            )
+        )
+        labels = {r[0].niche_id: r[0].forecast_label for r in brief_rows.all()}
+
+        niches = (await session.execute(select(Niche))).scalars().all()
+
+    ranked = sorted(niches, key=lambda n: scores.get(n.id, 0.0), reverse=True)
+
+    if not ranked:
+        await update.effective_message.reply_text(
+            md_escape("No niches loaded."), parse_mode="MarkdownV2"
+        )
+        return
+
+    lines = [bold("Tracked Niches")]
+    for n in ranked:
+        score = scores.get(n.id, 0.0)
+        arrow = trend_arrow(labels.get(n.id, "Stable"))
+        lines.append(
+            f"{arrow} {bold(n.name)} \\| {bold(format_score(score))} "
+            f"\\(`/niche {md_escape(n.slug)}`\\)"
+        )
+
+    text = truncate("\n".join(lines), settings.telegram_max_message_chars)
+    await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 
 
 async def niche_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -170,3 +170,32 @@ class TestBriefingHandler:
         await briefing_handler(update, mock_context)
         text = update.effective_message.reply_text.call_args.args[0]
         assert "no briefs" in text.lower() or "not yet" in text.lower()
+
+
+class TestNichesHandler:
+    async def test_niches_lists_all_with_scores(self, mock_context):
+        from app.bot.handlers import niches_handler
+        from app.db import get_session, init_db
+        from app.models import Niche, NicheScoreHistory
+        from datetime import datetime, timezone
+
+        await init_db()
+        async with get_session() as s:
+            n1 = Niche(name="Alpha", slug="alpha", category="c", keywords_json=[])
+            n2 = Niche(name="Beta", slug="beta", category="c", keywords_json=[])
+            s.add_all([n1, n2]); await s.flush()
+            s.add_all([
+                NicheScoreHistory(niche_id=n1.id, score_total=70.0,
+                                  score_breakdown_json={}, scored_at=datetime.now(timezone.utc)),
+                NicheScoreHistory(niche_id=n2.id, score_total=85.0,
+                                  score_breakdown_json={}, scored_at=datetime.now(timezone.utc)),
+            ])
+            await s.commit()
+
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        await niches_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert "Alpha" in text and "Beta" in text
+        # Beta listed first (higher score)
+        assert text.index("Beta") < text.index("Alpha")
