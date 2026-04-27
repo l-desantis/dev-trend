@@ -869,7 +869,7 @@ git commit -m "feat(scoring): three-dimension composite scorer with percentile n
 **Files:**
 - Modify: `app/ingestion/scheduler.py`
 
-- [ ] **Step 1: Edit scheduler**
+- [x] **Step 1: Edit scheduler**
 
 In `app/ingestion/scheduler.py`:
 
@@ -919,12 +919,12 @@ from app.forecasting.scoring import score_all_niches
     )
 ```
 
-- [ ] **Step 2: Verify imports**
+- [x] **Step 2: Verify imports**
 
 Run: `python -c "from app.ingestion.scheduler import build_scheduler; print('ok')"`
 Expected: `ok` (no import errors).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add app/ingestion/scheduler.py
@@ -938,7 +938,7 @@ git commit -m "feat(scoring): schedule daily signal aggregation + niche scoring"
 **Files:**
 - Create: `scripts/run_scoring.py`
 
-- [ ] **Step 1: Create script**
+- [x] **Step 1: Create script**
 
 Create `scripts/run_scoring.py`:
 
@@ -970,7 +970,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run (against existing dev DB after at least one ingestion has happened; if the DB is empty, first run `python scripts/seed_mock_data.py` then `python scripts/run_ingestion.py`):
 
@@ -980,7 +980,7 @@ python scripts/run_scoring.py
 
 Expected: prints `signals_written=<N> niches_scored=<M>` with both ≥ 0 (≥ 1 if any source items exist). No traceback.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add scripts/run_scoring.py
@@ -991,12 +991,12 @@ git commit -m "chore(scoring): add manual run_scoring smoke script"
 
 ## Task 7 — Final sweep and KANBAN update
 
-- [ ] **Step 1: Run the full test suite**
+- [x] **Step 1: Run the full test suite**
 
 Run: `pytest -v`
 Expected: all existing tests still pass + the three new test files pass. If anything breaks, fix before moving on.
 
-- [ ] **Step 2: Review ADR-004**
+- [x] **Step 2: Review ADR-004**
 
 Read `docs/decisions.md:54-76`. Confirm it matches the implementation:
 - Weights 0.41 / 0.35 / 0.24 ✓
@@ -1005,11 +1005,11 @@ Read `docs/decisions.md:54-76`. Confirm it matches the implementation:
 
 If the implementation surfaced a non-obvious choice worth documenting (e.g. the neutral-50 fallback for niches with < 2 days history), append a one-paragraph note to ADR-004 under a new **Implementation notes** subheading. Otherwise leave it as-is.
 
-- [ ] **Step 3: Flip KANBAN status**
+- [x] **Step 3: Flip KANBAN status**
 
 In `KANBAN.md`, set `Status` to `Done` for: M3-01, M3-02, M3-03, M3-04, M3-05, M3-06.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add KANBAN.md docs/decisions.md
