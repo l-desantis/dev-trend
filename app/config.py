@@ -74,9 +74,23 @@ class Settings(BaseSettings):
     ingestion_http_timeout_s: float = 20.0
     ingestion_job_timeout_s: float = 180.0
 
-    # Scheduling
-    daily_digest_time: str = "08:00"
+    # Daily digest push
+    digest_cron_hour: int = 8
+    digest_cron_minute: int = 0
+    digest_top_n: int = 3
+
+    # Spike alerts
     spike_alert_threshold: float = 15.0
+
+    # /trending command
+    trending_top_n: int = 5
+    trending_window_hours: int = 24
+
+    # /briefing command
+    briefing_top_n: int = 3
+
+    # Telegram message limit
+    telegram_max_message_chars: int = 4096
 
     # Scoring
     growth_weight: float = 0.41
