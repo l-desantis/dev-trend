@@ -6,12 +6,26 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from sqlalchemy import select
+
+from app.agents.graph import run_brief_for_niche
 from app.config import Settings
+from app.db import get_session
 from app.features.signal_aggregator import aggregate_daily_signals
 from app.forecasting.scoring import score_all_niches
 from app.ingestion.base import BaseConnector, ConnectorRunRegistry
+from app.llm.base import LLMAdapter
+from app.llm.mock_adapter import MockLLMAdapter
+from app.llm.ollama_adapter import OllamaAdapter
+from app.models import Niche
 
 log = structlog.get_logger(__name__)
+
+
+def _select_adapter(settings: Settings) -> LLMAdapter:
+    if settings.llm_provider == "ollama":
+        return OllamaAdapter(base_url=settings.ollama_base_url, model=settings.ollama_model)
+    return MockLLMAdapter()
 
 
 def build_scheduler(
@@ -62,9 +76,44 @@ def build_scheduler(
         misfire_grace_time=600,
     )
 
+    async def _brief_job():
+        adapter = _select_adapter(settings)
+        try:
+            async with get_session() as session:
+                niche_ids = (await session.execute(select(Niche.id))).scalars().all()
+            generated = 0
+            for nid in niche_ids:
+                try:
+                    if await run_brief_for_niche(nid, adapter, triggered_by="scheduler"):
+                        generated += 1
+                except Exception as exc:
+                    log.error(
+                        "Brief job: niche failed",
+                        component="scheduler",
+                        niche_id=nid,
+                        error=str(exc),
+                    )
+            log.info(
+                "Daily brief generation complete",
+                component="scheduler",
+                niches_total=len(niche_ids),
+                briefs_generated=generated,
+            )
+        except Exception as exc:
+            log.error("Daily brief generation failed", component="scheduler", error=str(exc))
+
+    scheduler.add_job(
+        _brief_job,
+        CronTrigger(hour=settings.brief_cron_hour, minute=settings.brief_cron_minute),
+        id="daily_brief_generation",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=600,
+    )
+
     log.info(
         "Scheduler built",
         component="scheduler",
-        jobs=list(connector_map.keys()) + ["daily_scoring"],
+        jobs=list(connector_map.keys()) + ["daily_scoring", "daily_brief_generation"],
     )
     return scheduler
