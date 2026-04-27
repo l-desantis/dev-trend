@@ -1,6 +1,8 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
+from app.config import get_settings
+
 _START_TEXT = (
     "👋 *Welcome to DevTrend\\!*\n\n"
     "I monitor developer\\-facing market signals across GitHub, Hacker News, Reddit, "
@@ -33,8 +35,40 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def briefing_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_message:
-        await update.effective_message.reply_text(_COMING_SOON)
+    """Return top-N latest opportunity briefs, ranked by score_total."""
+    from sqlalchemy import select
+    from app.db import get_session
+    from app.models import Niche, OpportunityBrief
+    from app.bot.formatter import bold, format_score, md_escape, trend_arrow, truncate
+
+    settings = get_settings()
+    async with get_session() as session:
+        result = await session.execute(
+            select(OpportunityBrief, Niche)
+            .join(Niche, Niche.id == OpportunityBrief.niche_id)
+            .order_by(OpportunityBrief.score_total.desc())
+            .limit(settings.briefing_top_n)
+        )
+        rows = result.all()
+
+    if not rows:
+        await update.effective_message.reply_text(
+            md_escape("No briefs yet — the agent will run at 03:00 UTC."),
+            parse_mode="MarkdownV2",
+        )
+        return
+
+    lines = [bold("DevTrend Briefing")]
+    for i, (brief, niche) in enumerate(rows, start=1):
+        arrow = trend_arrow(brief.forecast_label)
+        lines.append(
+            f"\n{i}\\. {bold(niche.name)} "
+            f"\\| {bold(format_score(brief.score_total))} {arrow}\n"
+            f"{md_escape(brief.summary)}"
+        )
+
+    text = truncate("\n".join(lines), settings.telegram_max_message_chars)
+    await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 
 
 async def niches_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

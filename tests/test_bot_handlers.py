@@ -124,3 +124,49 @@ class TestSourcesHandler:
         text = update.effective_message.reply_text.call_args.args[0]
         assert "42" in text
         assert "github" in text
+
+
+class TestBriefingHandler:
+    async def test_briefing_returns_top_n_briefs(self, mock_context):
+        from app.bot.handlers import briefing_handler
+        from app.db import get_session, init_db
+        from app.models import Niche, OpportunityBrief
+        from datetime import datetime, timezone
+
+        await init_db()
+        async with get_session() as s:
+            niche = Niche(name="X", slug="x", category="c", keywords_json=[])
+            s.add(niche); await s.flush()
+            s.add(OpportunityBrief(
+                niche_id=niche.id,
+                headline="X — Score 84",
+                summary="Strong momentum.",
+                score_total=84.0,
+                score_breakdown_json={"growth": 90, "demand": 80, "novelty": 70},
+                evidence_json=[],
+                forecast_label="Rising",
+                has_issues=False,
+                generated_at=datetime.now(timezone.utc),
+                model_name="qwen2.5",
+            ))
+            await s.commit()
+
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        await briefing_handler(update, mock_context)
+
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert "84" in text
+        assert "↑" in text
+        assert "X" in text
+
+    async def test_briefing_handles_no_briefs(self, mock_context):
+        from app.bot.handlers import briefing_handler
+        from app.db import init_db
+
+        await init_db()
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        await briefing_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert "no briefs" in text.lower() or "not yet" in text.lower()
