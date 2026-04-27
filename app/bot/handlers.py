@@ -140,8 +140,76 @@ async def niches_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def niche_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_message:
-        await update.effective_message.reply_text(_COMING_SOON)
+    from sqlalchemy import select
+    from app.db import get_session
+    from app.models import Niche, OpportunityBrief
+    from app.bot.formatter import bold, format_score, md_escape, trend_arrow, truncate
+
+    settings = get_settings()
+    args = context.args or []
+    if not args:
+        await update.effective_message.reply_text(
+            md_escape("Usage: /niche <slug>  (try /niches for the list)"),
+            parse_mode="MarkdownV2",
+        )
+        return
+
+    slug = args[0].strip().lower()
+
+    async with get_session() as session:
+        niche = (await session.execute(
+            select(Niche).where(Niche.slug == slug)
+        )).scalar_one_or_none()
+
+        if niche is None:
+            await update.effective_message.reply_text(
+                md_escape(f"Niche '{slug}' not found."),
+                parse_mode="MarkdownV2",
+            )
+            return
+
+        brief = (await session.execute(
+            select(OpportunityBrief)
+            .where(OpportunityBrief.niche_id == niche.id)
+            .order_by(OpportunityBrief.generated_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+
+    if brief is None:
+        await update.effective_message.reply_text(
+            f"{bold(niche.name)}\n{md_escape('No brief yet.')}",
+            parse_mode="MarkdownV2",
+        )
+        return
+
+    breakdown = brief.score_breakdown_json or {}
+    arrow = trend_arrow(brief.forecast_label)
+    lines = [
+        f"{bold(niche.name)} {arrow}",
+        f"{bold('Score')}: {bold(format_score(brief.score_total))}",
+        f"  Growth: {format_score(breakdown.get('growth', 0))}",
+        f"  Demand: {format_score(breakdown.get('demand', 0))}",
+        f"  Novelty: {format_score(breakdown.get('novelty', 0))}",
+        "",
+        md_escape(brief.summary),
+    ]
+
+    evidence = brief.evidence_json or []
+    if evidence:
+        lines.append("")
+        lines.append(bold("Evidence"))
+        for e in evidence[:5]:
+            title = md_escape(e.get("title", "(untitled)"))
+            url = md_escape(e.get("url", ""))
+            stype = md_escape(e.get("source_type", "?"))
+            lines.append(f"\\- \\[{stype}\\] {title} {url}")
+
+    text = truncate(
+        "\n".join(lines),
+        settings.telegram_max_message_chars,
+        footer="…\n_\\(truncated\\)_",
+    )
+    await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 
 
 async def trending_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

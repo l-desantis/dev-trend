@@ -199,3 +199,61 @@ class TestNichesHandler:
         assert "Alpha" in text and "Beta" in text
         # Beta listed first (higher score)
         assert text.index("Beta") < text.index("Alpha")
+
+
+class TestNicheHandler:
+    async def test_niche_returns_full_scorecard(self, mock_context):
+        from app.bot.handlers import niche_handler
+        from app.db import get_session, init_db
+        from app.models import Niche, OpportunityBrief
+        from datetime import datetime, timezone
+
+        await init_db()
+        async with get_session() as s:
+            n = Niche(name="Alpha", slug="alpha", category="c",
+                      keywords_json=[], summary="An alpha niche.")
+            s.add(n); await s.flush()
+            s.add(OpportunityBrief(
+                niche_id=n.id, headline="Alpha — Score 80",
+                summary="Strong week.", score_total=80.0,
+                score_breakdown_json={"growth": 85, "demand": 78, "novelty": 75},
+                evidence_json=[{"source_type": "github", "title": "repo-x",
+                                "url": "https://x", "excerpt": "a repo"}],
+                forecast_label="Rising", has_issues=False,
+                generated_at=datetime.now(timezone.utc), model_name="qwen2.5",
+            ))
+            await s.commit()
+
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        mock_context.args = ["alpha"]
+        await niche_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert "Alpha" in text
+        assert "80" in text
+        assert "Growth" in text or "growth" in text
+        assert "repo" in text  # title escaped: repo\-x
+
+    async def test_niche_unknown_slug(self, mock_context):
+        from app.bot.handlers import niche_handler
+        from app.db import init_db
+
+        await init_db()
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        mock_context.args = ["does-not-exist"]
+        await niche_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0].lower()
+        assert "not found" in text or "unknown" in text
+
+    async def test_niche_no_args(self, mock_context):
+        from app.bot.handlers import niche_handler
+        from app.db import init_db
+
+        await init_db()
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        mock_context.args = []
+        await niche_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0].lower()
+        assert "usage" in text or "/niche" in text
