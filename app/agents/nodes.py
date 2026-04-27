@@ -1,7 +1,8 @@
 """LangGraph node functions for the opportunity-brief agent.
 
-Each node accepts and returns the full `OpportunityState` dict so LangGraph
-can merge keys back into the channel automatically.
+Each node returns only the state keys it updates; LangGraph merges them back
+into the channel. The `errors` channel uses an `operator.add` reducer so
+errors from every node accumulate rather than overwrite each other.
 """
 from __future__ import annotations
 
@@ -23,18 +24,15 @@ log = structlog.get_logger(__name__)
 
 _SOURCE_ITEM_LOOKBACK_DAYS = 30
 _SOURCE_ITEM_LIMIT = 50
+_SIGNAL_LOOKBACK_DAYS = 7
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _record_error(state: OpportunityState, component: str, message: str) -> None:
-    state.setdefault("errors", []).append({
-        "component": component,
-        "message": message,
-        "at": _utcnow().isoformat(),
-    })
+def _error(component: str, message: str) -> dict[str, Any]:
+    return {"component": component, "message": message, "at": _utcnow().isoformat()}
 
 
 def _serialise_item(item: SourceItem) -> dict[str, Any]:
@@ -51,14 +49,11 @@ def _serialise_item(item: SourceItem) -> dict[str, Any]:
     }
 
 
-async def fetcher_node(state: OpportunityState) -> OpportunityState:
-    niche_id = state.get("niche", {}).get("id")
-    state.setdefault("errors", [])
+async def fetcher_node(state: OpportunityState) -> dict[str, Any]:
+    niche_id = (state.get("niche") or {}).get("id")
 
     if not niche_id:
-        _record_error(state, "fetcher_node", "missing niche.id")
-        state["source_items"] = []
-        return state
+        return {"source_items": [], "errors": [_error("fetcher_node", "missing niche.id")]}
 
     async with get_session() as session:
         niche = (await session.execute(
@@ -66,10 +61,11 @@ async def fetcher_node(state: OpportunityState) -> OpportunityState:
         )).scalar_one_or_none()
 
         if niche is None:
-            _record_error(state, "fetcher_node", f"niche {niche_id} not found")
-            state["niche"] = {"id": niche_id}
-            state["source_items"] = []
-            return state
+            return {
+                "niche": {"id": niche_id},
+                "source_items": [],
+                "errors": [_error("fetcher_node", f"niche {niche_id} not found")],
+            }
 
         cutoff = _utcnow() - timedelta(days=_SOURCE_ITEM_LOOKBACK_DAYS)
         items = (await session.execute(
@@ -82,30 +78,25 @@ async def fetcher_node(state: OpportunityState) -> OpportunityState:
             .limit(_SOURCE_ITEM_LIMIT)
         )).scalars().all()
 
-    state["niche"] = {
-        "id": niche.id,
-        "slug": niche.slug,
-        "name": niche.name,
-        "category": niche.category,
-        "summary": niche.summary,
-    }
-    state["source_items"] = [_serialise_item(i) for i in items]
     log.info("Fetcher complete", component="fetcher_node",
              niche_id=niche_id, items=len(items))
-    return state
+    return {
+        "niche": {
+            "id": niche.id,
+            "slug": niche.slug,
+            "name": niche.name,
+            "category": niche.category,
+            "summary": niche.summary,
+        },
+        "source_items": [_serialise_item(i) for i in items],
+    }
 
 
-_SIGNAL_LOOKBACK_DAYS = 7
-
-
-async def retriever_node(state: OpportunityState) -> OpportunityState:
-    niche_id = state.get("niche", {}).get("id")
-    state.setdefault("errors", [])
-    state["signals"] = []
+async def retriever_node(state: OpportunityState) -> dict[str, Any]:
+    niche_id = (state.get("niche") or {}).get("id")
 
     if not niche_id:
-        _record_error(state, "retriever_node", "missing niche.id")
-        return state
+        return {"signals": [], "errors": [_error("retriever_node", "missing niche.id")]}
 
     cutoff = _utcnow() - timedelta(days=_SIGNAL_LOOKBACK_DAYS)
     async with get_session() as session:
@@ -118,18 +109,19 @@ async def retriever_node(state: OpportunityState) -> OpportunityState:
             .order_by(NicheSignal.metric_timestamp.desc())
         )).scalars().all()
 
-    state["signals"] = [
-        {
-            "source_type": r.source_type,
-            "metric_name": r.metric_name,
-            "metric_value": float(r.metric_value),
-            "metric_timestamp": r.metric_timestamp.isoformat(),
-        }
-        for r in rows
-    ]
     log.info("Retriever complete", component="retriever_node",
              niche_id=niche_id, signals=len(rows))
-    return state
+    return {
+        "signals": [
+            {
+                "source_type": r.source_type,
+                "metric_name": r.metric_name,
+                "metric_value": float(r.metric_value),
+                "metric_timestamp": r.metric_timestamp.isoformat(),
+            }
+            for r in rows
+        ],
+    }
 
 
 def _forecast_label(growth_raw: float) -> str:
@@ -148,15 +140,13 @@ def _start_of_day(dt: datetime) -> datetime:
 
 async def forecaster_node(
     state: OpportunityState, *, as_of: datetime | None = None
-) -> OpportunityState:
-    niche_id = state.get("niche", {}).get("id")
-    state.setdefault("errors", [])
+) -> dict[str, Any]:
+    niche_id = (state.get("niche") or {}).get("id")
     when = as_of or _utcnow()
     today = _start_of_day(when)
 
     if not niche_id:
-        _record_error(state, "forecaster_node", "missing niche.id")
-        return state
+        return {"errors": [_error("forecaster_node", "missing niche.id")]}
 
     async with get_session() as session:
         row = (await session.execute(
@@ -171,24 +161,25 @@ async def forecaster_node(
         try:
             row = await score_niche(niche_id, when)
         except Exception as exc:
-            _record_error(state, "forecaster_node", f"score_niche failed: {exc}")
-            return state
+            return {"errors": [_error("forecaster_node", f"score_niche failed: {exc}")]}
 
     breakdown = row.score_breakdown_json or {}
     growth_raw = float(breakdown.get("growth", {}).get("raw", 0.0))
+    score_total = float(row.score_total)
 
-    state["scorecard"] = {
-        "score_total": float(row.score_total),
-        "breakdown": breakdown,
-        "scored_at": row.scored_at.isoformat(),
-    }
-    state["forecast"] = {
-        "label": _forecast_label(growth_raw),
-        "slope": growth_raw,
-    }
     log.info("Forecaster complete", component="forecaster_node",
-             niche_id=niche_id, score_total=round(state["scorecard"]["score_total"], 2))
-    return state
+             niche_id=niche_id, score_total=round(score_total, 2))
+    return {
+        "scorecard": {
+            "score_total": score_total,
+            "breakdown": breakdown,
+            "scored_at": row.scored_at.isoformat(),
+        },
+        "forecast": {
+            "label": _forecast_label(growth_raw),
+            "slope": growth_raw,
+        },
+    }
 
 
 def _build_evidence(items: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
@@ -212,16 +203,15 @@ async def reporter_node(
     *,
     adapter: LLMAdapter,
     timeout: float | None = None,
-) -> OpportunityState:
-    state.setdefault("errors", [])
+) -> dict[str, Any]:
     settings = get_settings()
     timeout_s = timeout if timeout is not None else settings.brief_per_niche_timeout_s
     max_evidence = settings.brief_max_evidence_items
 
-    niche = state.get("niche", {}) or {}
-    scorecard = state.get("scorecard", {}) or {}
-    forecast = state.get("forecast", {}) or {}
-    source_items = state.get("source_items", []) or []
+    niche = state.get("niche") or {}
+    scorecard = state.get("scorecard") or {}
+    forecast = state.get("forecast") or {}
+    source_items = state.get("source_items") or []
     evidence = _build_evidence(source_items, max_evidence)
 
     score_total = float(scorecard.get("score_total", 0.0))
@@ -229,50 +219,45 @@ async def reporter_node(
     forecast_label = forecast.get("label", "Stable")
     model_name = type(adapter).__name__
 
-    context = {
-        "niche": niche,
-        "scorecard": scorecard,
-        "forecast": forecast,
-        "evidence": evidence,
-    }
+    context = {"niche": niche, "scorecard": scorecard, "forecast": forecast, "evidence": evidence}
 
     summary = ""
+    errors: list[dict[str, Any]] = []
     try:
-        summary = await asyncio.wait_for(
-            adapter.generate_brief(context),
-            timeout=timeout_s,
-        )
+        summary = await asyncio.wait_for(adapter.generate_brief(context), timeout=timeout_s)
     except asyncio.TimeoutError:
-        _record_error(state, "reporter_node",
-                      f"generate_brief timed out after {timeout_s}s")
+        errors.append(_error("reporter_node", f"generate_brief timed out after {timeout_s}s"))
         log.error("Reporter timeout", component="reporter_node",
                   niche_id=niche.get("id"), timeout_s=timeout_s)
     except Exception as exc:
-        _record_error(state, "reporter_node", f"generate_brief failed: {exc}")
+        errors.append(_error("reporter_node", f"generate_brief failed: {exc}"))
         log.error("Reporter failed", component="reporter_node",
                   niche_id=niche.get("id"), error=str(exc))
 
-    state["brief"] = {
-        "headline": headline,
-        "summary": summary or "",
-        "evidence": evidence,
-        "forecast_label": forecast_label,
-        "has_issues": False,  # reviewer_node sets this
-        "model_name": model_name,
-    }
     log.info("Reporter complete", component="reporter_node",
-             niche_id=niche.get("id"),
-             summary_chars=len(state["brief"]["summary"]))
-    return state
+             niche_id=niche.get("id"), summary_chars=len(summary))
+
+    result: dict[str, Any] = {
+        "brief": {
+            "headline": headline,
+            "summary": summary or "",
+            "evidence": evidence,
+            "forecast_label": forecast_label,
+            "has_issues": False,  # reviewer_node sets this
+            "model_name": model_name,
+        },
+    }
+    if errors:
+        result["errors"] = errors
+    return result
 
 
 _PLACEHOLDER_MARKERS = ("TODO", "[INSERT", "<placeholder>", "TBD")
 
 
-async def reviewer_node(state: OpportunityState) -> OpportunityState:
-    state.setdefault("errors", [])
+async def reviewer_node(state: OpportunityState) -> dict[str, Any]:
     settings = get_settings()
-    brief = state.get("brief") or {}
+    brief = dict(state.get("brief") or {})
     gaps: list[str] = []
 
     summary = (brief.get("summary") or "").strip()
@@ -290,19 +275,12 @@ async def reviewer_node(state: OpportunityState) -> OpportunityState:
 
     brief["has_issues"] = bool(gaps)
     brief["gaps"] = gaps
-    state["brief"] = brief
 
     if gaps:
-        log.warning(
-            "Brief has issues",
-            component="reviewer_node",
-            niche_id=state.get("niche", {}).get("id"),
-            gaps=gaps,
-        )
+        log.warning("Brief has issues", component="reviewer_node",
+                    niche_id=(state.get("niche") or {}).get("id"), gaps=gaps)
     else:
-        log.info(
-            "Brief reviewed clean",
-            component="reviewer_node",
-            niche_id=state.get("niche", {}).get("id"),
-        )
-    return state
+        log.info("Brief reviewed clean", component="reviewer_node",
+                 niche_id=(state.get("niche") or {}).get("id"))
+
+    return {"brief": brief}
