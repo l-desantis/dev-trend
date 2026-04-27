@@ -65,16 +65,16 @@
 
 | ID | Title | Description | Status | Depends On |
 |---|---|---|---|---|
-| M4-01 | `OpportunityState` TypedDict | Define shared state passed through all LangGraph nodes | To Do | M1-03 |
-| M4-02 | LangGraph graph skeleton | Wire five nodes in linear sequence; register start/end; add structured error field | To Do | M4-01 |
-| M4-03 | `fetcher_node` | Load latest `SourceItem` rows for the target niche from DB | To Do | M4-02 |
-| M4-04 | `retriever_node` | Compute and retrieve `NicheSignal` aggregates for the niche | To Do | M4-03 |
-| M4-05 | `forecaster_node` | Call rolling-slope + scorer; populate `scorecard` in state | To Do | M4-04, M3-05 |
-| M4-06 | Ollama adapter | `OllamaAdapter` implementing `LLMAdapter`. Target model: qwen2.5. Prompt templates in `agents/prompts.py` | To Do | M1-08 |
-| M4-07 | `reporter_node` | Call `OllamaAdapter.generate_brief()` with 90s `asyncio.wait_for` timeout. On timeout: log, return empty brief | To Do | M4-05, M4-06 |
-| M4-08 | `reviewer_node` | Validate brief completeness. Set `has_issues = True` and log gaps. Never retries | To Do | M4-07 |
-| M4-09 | Brief persistence | Save `OpportunityBrief` to DB with denormalised `evidence_json` snapshot and `score_breakdown_json` | To Do | M4-08 |
-| M4-10 | Scheduler: brief job | Register daily brief-generation job with `max_instances=1` on `AsyncIOScheduler` | To Do | M4-09 |
+| M4-01 | `OpportunityState` TypedDict | Define shared state passed through all LangGraph nodes | Done | M1-03 |
+| M4-02 | LangGraph graph skeleton | Wire five nodes in linear sequence; register start/end; add structured error field | Done | M4-01 |
+| M4-03 | `fetcher_node` | Load latest `SourceItem` rows for the target niche from DB | Done | M4-02 |
+| M4-04 | `retriever_node` | Compute and retrieve `NicheSignal` aggregates for the niche | Done | M4-03 |
+| M4-05 | `forecaster_node` | Call rolling-slope + scorer; populate `scorecard` in state | Done | M4-04, M3-05 |
+| M4-06 | Ollama adapter | `OllamaAdapter` implementing `LLMAdapter`. Target model: qwen2.5. Prompt templates in `agents/prompts.py` | Done | M1-08 |
+| M4-07 | `reporter_node` | Call `OllamaAdapter.generate_brief()` with 90s `asyncio.wait_for` timeout. On timeout: log, return empty brief | Done | M4-05, M4-06 |
+| M4-08 | `reviewer_node` | Validate brief completeness. Set `has_issues = True` and log gaps. Never retries | Done | M4-07 |
+| M4-09 | Brief persistence | Save `OpportunityBrief` to DB with denormalised `evidence_json` snapshot and `score_breakdown_json` | Done | M4-08 |
+| M4-10 | Scheduler: brief job | Register daily brief-generation job with `max_instances=1` on `AsyncIOScheduler` | Done | M4-09 |
 
 ---
 
