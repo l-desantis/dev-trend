@@ -78,6 +78,16 @@ class Settings(BaseSettings):
     daily_digest_time: str = "08:00"
     spike_alert_threshold: float = 15.0
 
+    # Scoring
+    growth_weight: float = 0.41
+    demand_weight: float = 0.35
+    novelty_weight: float = 0.24
+    scoring_growth_window_days: int = 7
+    scoring_novelty_max_age_days: int = 30
+    scoring_normalization_window_days: int = 30
+    scoring_cron_hour: int = 2
+    scoring_cron_minute: int = 15
+
     # Logging
     log_level: str = "INFO"
 
