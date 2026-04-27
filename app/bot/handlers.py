@@ -36,6 +36,8 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def briefing_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Return top-N latest opportunity briefs, ranked by score_total."""
+    if not update.effective_message:
+        return
     from sqlalchemy import select
     from app.db import get_session
     from app.models import Niche, OpportunityBrief
@@ -60,11 +62,11 @@ async def briefing_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     lines = [bold("DevTrend Briefing")]
     for i, (brief, niche) in enumerate(rows, start=1):
-        arrow = trend_arrow(brief.forecast_label)
+        arrow = trend_arrow(brief.forecast_label or "Stable")
         lines.append(
             f"\n{i}\\. {bold(niche.name)} "
-            f"\\| {bold(format_score(brief.score_total))} {arrow}\n"
-            f"{md_escape(brief.summary)}"
+            f"\\| {bold(format_score(brief.score_total or 0.0))} {arrow}\n"
+            f"{md_escape(brief.summary or '')}"
         )
 
     text = truncate("\n".join(lines), settings.telegram_max_message_chars)
@@ -72,6 +74,8 @@ async def briefing_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def niches_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_message:
+        return
     from sqlalchemy import select, func
     from app.db import get_session
     from app.models import Niche, NicheScoreHistory, OpportunityBrief
@@ -140,6 +144,8 @@ async def niches_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def niche_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_message:
+        return
     from sqlalchemy import select
     from app.db import get_session
     from app.models import Niche, OpportunityBrief
@@ -183,15 +189,15 @@ async def niche_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     breakdown = brief.score_breakdown_json or {}
-    arrow = trend_arrow(brief.forecast_label)
+    arrow = trend_arrow(brief.forecast_label or "Stable")
     lines = [
         f"{bold(niche.name)} {arrow}",
-        f"{bold('Score')}: {bold(format_score(brief.score_total))}",
+        f"{bold('Score')}: {bold(format_score(brief.score_total or 0.0))}",
         f"  Growth: {format_score(breakdown.get('growth', 0))}",
         f"  Demand: {format_score(breakdown.get('demand', 0))}",
         f"  Novelty: {format_score(breakdown.get('novelty', 0))}",
         "",
-        md_escape(brief.summary),
+        md_escape(brief.summary or ""),
     ]
 
     evidence = brief.evidence_json or []
@@ -213,6 +219,8 @@ async def niche_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def trending_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_message:
+        return
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import select, func
     from app.db import get_session
@@ -225,19 +233,23 @@ async def trending_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     cur_start, prior_start = now - window, now - 2 * window
 
     async with get_session() as session:
-        cur = dict((await session.execute(
-            select(SourceItem.niche_id, func.count(SourceItem.id))
-            .where(SourceItem.ingested_at >= cur_start)
-            .where(SourceItem.niche_id.is_not(None))
-            .group_by(SourceItem.niche_id)
-        )).all())
-        prior = dict((await session.execute(
-            select(SourceItem.niche_id, func.count(SourceItem.id))
-            .where(SourceItem.ingested_at >= prior_start)
-            .where(SourceItem.ingested_at < cur_start)
-            .where(SourceItem.niche_id.is_not(None))
-            .group_by(SourceItem.niche_id)
-        )).all())
+        cur: dict[int | None, int] = {
+            row[0]: row[1] for row in (await session.execute(
+                select(SourceItem.niche_id, func.count(SourceItem.id))
+                .where(SourceItem.ingested_at >= cur_start)
+                .where(SourceItem.niche_id.is_not(None))
+                .group_by(SourceItem.niche_id)
+            )).all()
+        }
+        prior: dict[int | None, int] = {
+            row[0]: row[1] for row in (await session.execute(
+                select(SourceItem.niche_id, func.count(SourceItem.id))
+                .where(SourceItem.ingested_at >= prior_start)
+                .where(SourceItem.ingested_at < cur_start)
+                .where(SourceItem.niche_id.is_not(None))
+                .group_by(SourceItem.niche_id)
+            )).all()
+        }
         niches = {n.id: n for n in
                   (await session.execute(select(Niche))).scalars().all()}
 
