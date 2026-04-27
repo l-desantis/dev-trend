@@ -46,3 +46,8 @@ testpaths = ["tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[dependency-groups]
+dev = [
+    "types-pyyaml>=6.0.12.20260408",
+]

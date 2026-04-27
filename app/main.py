@@ -67,7 +67,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         bot_app.bot_data["run_registry"] = registry
         await bot_app.initialize()
         await bot_app.start()
-        await bot_app.updater.start_polling()
+        if bot_app.updater is not None:
+            await bot_app.updater.start_polling()
         log.info("Telegram bot started", component="main")
     else:
         log.warning("TELEGRAM_BOT_TOKEN not set — bot disabled", component="main")
@@ -80,7 +81,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     scheduler.shutdown(wait=False)
     if bot_app is not None:
-        await bot_app.updater.stop()
+        if bot_app.updater is not None:
+            await bot_app.updater.stop()
         await bot_app.stop()
         await bot_app.shutdown()
         log.info("Telegram bot stopped", component="main")

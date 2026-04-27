@@ -37,7 +37,7 @@ def build_graph(adapter: LLMAdapter):
     """
     sg: StateGraph = StateGraph(OpportunityState)
 
-    async def _reporter(state: OpportunityState) -> OpportunityState:
+    async def _reporter(state: OpportunityState) -> dict[str, Any]:
         return await reporter_node(state, adapter=adapter)
 
     sg.add_node("fetcher", fetcher_node)

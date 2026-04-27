@@ -130,13 +130,13 @@ class Settings(BaseSettings):
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
         dotenv_settings: PydanticBaseSettingsSource,
-        **kwargs: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         return (
             init_settings,
             _CommaSepEnvSource(settings_cls),
             _CommaSepDotEnvSource(settings_cls),
-            *kwargs.values(),
+            file_secret_settings,
         )
 
 

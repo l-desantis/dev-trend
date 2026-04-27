@@ -33,7 +33,7 @@ class OllamaAdapter(LLMAdapter):
                 {"role": "user", "content": prompt},
             ],
         )
-        return response.message.content
+        return response.message.content or ""
 
     async def summarize_evidence(self, items: list[Any]) -> str:
         bullet = "\n".join(
@@ -47,7 +47,7 @@ class OllamaAdapter(LLMAdapter):
                 {"role": "user", "content": bullet or "(no items)"},
             ],
         )
-        return response.message.content
+        return response.message.content or ""
 
     async def review_brief(self, brief: str) -> dict[str, object]:
         gaps: list[str] = []

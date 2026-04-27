@@ -3,7 +3,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal, cast
 
 import httpx
 import structlog
@@ -12,6 +12,7 @@ from app.db import get_session
 from app.features.niche_builder import NicheMatcher
 from app.models import SourceItem
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import CursorResult
 
 log = structlog.get_logger(__name__)
 
@@ -109,7 +110,7 @@ class BaseConnector(ABC):
             stmt = sqlite_insert(SourceItem).values(rows).on_conflict_do_nothing(
                 index_elements=["source_type", "external_id"]
             )
-            result = await session.execute(stmt)
+            result = cast(CursorResult[Any], await session.execute(stmt))
             await session.commit()
             return result.rowcount
 

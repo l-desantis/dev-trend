@@ -74,6 +74,7 @@ async def aggregate_daily_signals(as_of: datetime) -> int:
                 raw = item.metadata_json.get(meta_key)
                 if isinstance(raw, (int, float)):
                     value = float(raw)
+            assert item.niche_id is not None  # guaranteed by is_not(None) filter above
             key = (item.niche_id, item.source_type, metric_name)
             source_totals[key] = source_totals.get(key, 0.0) + value
 
