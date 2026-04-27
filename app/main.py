@@ -73,7 +73,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         log.warning("TELEGRAM_BOT_TOKEN not set — bot disabled", component="main")
 
-    scheduler = build_scheduler(connectors, registry, settings)
+    scheduler = build_scheduler(
+        connectors, registry, settings,
+        bot=(bot_app.bot if bot_app else None),
+    )
     scheduler.start()
     log.info("Scheduler started", component="main")
 

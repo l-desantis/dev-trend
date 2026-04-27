@@ -32,6 +32,8 @@ def build_scheduler(
     connectors: list[BaseConnector],
     registry: ConnectorRunRegistry,
     settings: Settings,
+    *,
+    bot=None,
 ) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
     connector_map = {c.source_type: c for c in connectors}
@@ -64,6 +66,8 @@ def build_scheduler(
                 signal_rows=rows,
                 niches_scored=niches,
             )
+            from app.bot.scheduler_hooks import push_spike_alerts
+            await push_spike_alerts(bot, as_of=now)
         except Exception as exc:
             log.error("Daily scoring failed", component="scheduler", error=str(exc))
 
@@ -111,9 +115,26 @@ def build_scheduler(
         misfire_grace_time=600,
     )
 
+    async def _digest_job() -> None:
+        from app.bot.scheduler_hooks import push_daily_digest
+        log.info("digest_job_start", component="scheduler")
+        await push_daily_digest(bot)
+        log.info("digest_job_done", component="scheduler")
+
+    scheduler.add_job(
+        _digest_job,
+        CronTrigger(
+            hour=settings.digest_cron_hour,
+            minute=settings.digest_cron_minute,
+        ),
+        id="daily_digest",
+        max_instances=1,
+        replace_existing=True,
+    )
+
     log.info(
         "Scheduler built",
         component="scheduler",
-        jobs=list(connector_map.keys()) + ["daily_scoring", "daily_brief_generation"],
+        jobs=list(connector_map.keys()) + ["daily_scoring", "daily_brief_generation", "daily_digest"],
     )
     return scheduler
