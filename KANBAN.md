@@ -82,13 +82,13 @@
 
 | ID | Title | Description | Status | Depends On |
 |---|---|---|---|---|
-| M5-01 | `/briefing` command | Return top 3 ranked `OpportunityBrief` rows formatted in MarkdownV2 | To Do | M4-09 |
-| M5-02 | `/niches` command | List all tracked niches with current score and trend label | To Do | M3-05 |
-| M5-03 | `/niche <slug>` command | Full scorecard and evidence for a specific niche; trim to 4096 chars with "…see brief" footer | To Do | M4-09 |
-| M5-04 | `/trending` command | Top rising signals across all sources in last 24h, ranked by signal count delta | To Do | M3-02 |
-| M5-05 | MarkdownV2 formatter | Helpers for bolding, escaping, trend arrows, source badges, length truncation | To Do | — |
-| M5-06 | Daily digest push | Scheduler hook at 08:00 UTC: top 3 briefs formatted and pushed to allowed chat IDs | To Do | M5-01, M5-05 |
-| M5-07 | Spike alert push | Daily job immediately after niche scoring: compare to `NicheScoreHistory`; push alert if Δ ≥ threshold | To Do | M3-05, M5-05 |
+| M5-01 | `/briefing` command | Return top 3 ranked `OpportunityBrief` rows formatted in MarkdownV2 | Done | M4-09 |
+| M5-02 | `/niches` command | List all tracked niches with current score and trend label | Done | M3-05 |
+| M5-03 | `/niche <slug>` command | Full scorecard and evidence for a specific niche; trim to 4096 chars with "…see brief" footer | Done | M4-09 |
+| M5-04 | `/trending` command | Top rising signals across all sources in last 24h, ranked by signal count delta | Done | M3-02 |
+| M5-05 | MarkdownV2 formatter | Helpers for bolding, escaping, trend arrows, source badges, length truncation | Done | — |
+| M5-06 | Daily digest push | Scheduler hook at 08:00 UTC: top 3 briefs formatted and pushed to allowed chat IDs | Done | M5-01, M5-05 |
+| M5-07 | Spike alert push | Daily job immediately after niche scoring: compare to `NicheScoreHistory`; push alert if Δ ≥ threshold | Done | M3-05, M5-05 |
 
 ---
 

@@ -80,7 +80,7 @@ Today, `app/bot/handlers.py:25-105` contains seven handlers. Six (everything exc
 **Files:**
 - Modify: `app/config.py` (replace `daily_digest_time` block; extend with M5 cron + sizing settings)
 
-- [ ] **Step 1: Edit settings**
+- [x] **Step 1: Edit settings**
 
 In `app/config.py`, locate `daily_digest_time: str = "08:00"` (around line 78) and `spike_alert_threshold: float = 15.0` (line 79). Replace `daily_digest_time` and add adjacent M5 settings:
 
@@ -106,14 +106,14 @@ In `app/config.py`, locate `daily_digest_time: str = "08:00"` (around line 78) a
 
 Remove the existing `daily_digest_time: str = "08:00"` line.
 
-- [ ] **Step 2: Sanity check**
+- [x] **Step 2: Sanity check**
 
 ```bash
 python -c "from app.config import get_settings; s = get_settings(); print(s.digest_cron_hour, s.digest_top_n, s.trending_window_hours)"
 ```
 Expected: `8 3 24`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add app/config.py
@@ -130,7 +130,7 @@ The four new commands and two push flows all share the same MarkdownV2 building 
 - Create: `tests/test_formatter.py`
 - Modify: `app/bot/formatter.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_formatter.py`:
 
@@ -189,14 +189,14 @@ def test_truncate_supports_custom_footer():
     assert len(out) <= 20
 ```
 
-- [ ] **Step 2: Run — confirm failure**
+- [x] **Step 2: Run — confirm failure**
 
 ```bash
 pytest tests/test_formatter.py -v
 ```
 Expected: ImportErrors for `bold`, `format_score`, `source_badge`, `trend_arrow`, `truncate`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace `app/bot/formatter.py` with:
 
@@ -244,14 +244,14 @@ def truncate(text: str, max_len: int, footer: str = "…") -> str:
     return text[:cut] + footer
 ```
 
-- [ ] **Step 4: Run — confirm pass**
+- [x] **Step 4: Run — confirm pass**
 
 ```bash
 pytest tests/test_formatter.py -v
 ```
 Expected: 9 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/bot/formatter.py tests/test_formatter.py
@@ -268,7 +268,7 @@ Top N (default 3) latest `OpportunityBrief` rows, ranked by `score_total DESC`, 
 - Modify: `app/bot/handlers.py`
 - Modify: `tests/test_bot_handlers.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Append to `tests/test_bot_handlers.py`:
 
@@ -319,14 +319,14 @@ class TestBriefingHandler:
         assert "no briefs" in text.lower() or "not yet" in text.lower()
 ```
 
-- [ ] **Step 2: Run — confirm failure**
+- [x] **Step 2: Run — confirm failure**
 
 ```bash
 pytest tests/test_bot_handlers.py::TestBriefingHandler -v
 ```
 Expected: handler still returns `_COMING_SOON`; assertions fail.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `app/bot/handlers.py`, replace `briefing_handler` with:
 
@@ -372,13 +372,13 @@ async def briefing_handler(
     await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 ```
 
-- [ ] **Step 4: Run — confirm pass**
+- [x] **Step 4: Run — confirm pass**
 
 ```bash
 pytest tests/test_bot_handlers.py::TestBriefingHandler -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/bot/handlers.py tests/test_bot_handlers.py
@@ -395,7 +395,7 @@ List every tracked niche with its latest `score_total` and a trend label sourced
 - Modify: `app/bot/handlers.py`
 - Modify: `tests/test_bot_handlers.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Append to `tests/test_bot_handlers.py`:
 
@@ -429,13 +429,13 @@ class TestNichesHandler:
         assert text.index("Beta") < text.index("Alpha")
 ```
 
-- [ ] **Step 2: Run — confirm failure**
+- [x] **Step 2: Run — confirm failure**
 
 ```bash
 pytest tests/test_bot_handlers.py::TestNichesHandler -v
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace `niches_handler` with:
 
@@ -518,13 +518,13 @@ async def niches_handler(
     await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 ```
 
-- [ ] **Step 4: Run — confirm pass**
+- [x] **Step 4: Run — confirm pass**
 
 ```bash
 pytest tests/test_bot_handlers.py::TestNichesHandler -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/bot/handlers.py tests/test_bot_handlers.py
@@ -541,7 +541,7 @@ Full scorecard for one niche: latest `OpportunityBrief` (headline, summary, evid
 - Modify: `app/bot/handlers.py`
 - Modify: `tests/test_bot_handlers.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Append to `tests/test_bot_handlers.py`:
 
@@ -604,13 +604,13 @@ class TestNicheHandler:
         assert "usage" in text or "/niche" in text
 ```
 
-- [ ] **Step 2: Run — confirm failure**
+- [x] **Step 2: Run — confirm failure**
 
 ```bash
 pytest tests/test_bot_handlers.py::TestNicheHandler -v
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace `niche_handler` with:
 
@@ -692,13 +692,13 @@ async def niche_handler(
     await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 ```
 
-- [ ] **Step 4: Run — confirm pass**
+- [x] **Step 4: Run — confirm pass**
 
 ```bash
 pytest tests/test_bot_handlers.py::TestNicheHandler -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/bot/handlers.py tests/test_bot_handlers.py
@@ -715,7 +715,7 @@ Top N niches by 24h-window mention-count delta. Window = last 24h; baseline = pr
 - Modify: `app/bot/handlers.py`
 - Modify: `tests/test_bot_handlers.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Append to `tests/test_bot_handlers.py`:
 
@@ -772,13 +772,13 @@ class TestTrendingHandler:
         assert "no" in text and ("trending" in text or "signal" in text)
 ```
 
-- [ ] **Step 2: Run — confirm failure**
+- [x] **Step 2: Run — confirm failure**
 
 ```bash
 pytest tests/test_bot_handlers.py::TestTrendingHandler -v
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace `trending_handler` with:
 
@@ -843,13 +843,13 @@ async def trending_handler(
     await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 ```
 
-- [ ] **Step 4: Run — confirm pass**
+- [x] **Step 4: Run — confirm pass**
 
 ```bash
 pytest tests/test_bot_handlers.py::TestTrendingHandler -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/bot/handlers.py tests/test_bot_handlers.py
@@ -866,7 +866,7 @@ Pure functions: read DB rows → return MarkdownV2 strings. No bot, no scheduler
 - Create: `tests/test_notifications.py`
 - Modify: `app/bot/notifications.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_notifications.py`:
 
@@ -928,14 +928,14 @@ class TestSpikeAlert:
         assert "20" in text  # delta
 ```
 
-- [ ] **Step 2: Run — confirm failure**
+- [x] **Step 2: Run — confirm failure**
 
 ```bash
 pytest tests/test_notifications.py -v
 ```
 Expected: ImportError — `notifications.py` is empty.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Write `app/bot/notifications.py`:
 
@@ -1000,13 +1000,13 @@ def build_spike_alert(
     ])
 ```
 
-- [ ] **Step 4: Run — confirm pass**
+- [x] **Step 4: Run — confirm pass**
 
 ```bash
 pytest tests/test_notifications.py -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/bot/notifications.py tests/test_notifications.py
@@ -1023,7 +1023,7 @@ Wraps notification builders with bot dispatch. Reads `telegram_allowed_chat_ids`
 - Create: `tests/test_scheduler_hooks.py`
 - Modify: `app/bot/scheduler_hooks.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_scheduler_hooks.py`:
 
@@ -1132,13 +1132,13 @@ class TestPushSpikeAlerts:
         await push_spike_alerts(None)
 ```
 
-- [ ] **Step 2: Run — confirm failure**
+- [x] **Step 2: Run — confirm failure**
 
 ```bash
 pytest tests/test_scheduler_hooks.py -v
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Write `app/bot/scheduler_hooks.py`:
 
@@ -1250,13 +1250,13 @@ async def push_spike_alerts(bot, as_of: datetime | None = None) -> None:
                           chat_id=chat_id, error=str(exc))
 ```
 
-- [ ] **Step 4: Run — confirm pass**
+- [x] **Step 4: Run — confirm pass**
 
 ```bash
 pytest tests/test_scheduler_hooks.py -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/bot/scheduler_hooks.py tests/test_scheduler_hooks.py
@@ -1273,7 +1273,7 @@ Pass `bot` into `build_scheduler`. Chain `push_spike_alerts` inside `_scoring_jo
 - Modify: `app/ingestion/scheduler.py`
 - Modify: `app/main.py`
 
-- [ ] **Step 1: Edit `app/ingestion/scheduler.py`**
+- [x] **Step 1: Edit `app/ingestion/scheduler.py`**
 
   1. Update `build_scheduler` signature:
      ```python
@@ -1308,7 +1308,7 @@ Pass `bot` into `build_scheduler`. Chain `push_spike_alerts` inside `_scoring_jo
      )
      ```
 
-- [ ] **Step 2: Edit `app/main.py`**
+- [x] **Step 2: Edit `app/main.py`**
 
   At line 76, replace
   ```python
@@ -1322,14 +1322,14 @@ Pass `bot` into `build_scheduler`. Chain `push_spike_alerts` inside `_scoring_jo
   )
   ```
 
-- [ ] **Step 3: Smoke check**
+- [x] **Step 3: Smoke check**
 
 ```bash
 python -c "from app.ingestion.scheduler import build_scheduler; print('ok')"
 pytest tests/ -v -k "test_scheduler or test_notifications or test_scheduler_hooks"
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/ingestion/scheduler.py app/main.py
@@ -1344,7 +1344,7 @@ git commit -m "feat(scheduler): wire digest + spike-alert push jobs"
 - Modify: `docs/decisions.md`
 - Modify: `KANBAN.md`
 
-- [ ] **Step 1: Append ADR-006 to `docs/decisions.md`**
+- [x] **Step 1: Append ADR-006 to `docs/decisions.md`**
 
 ```markdown
 ## ADR-006: Daily digest delivery & spike-alert chaining
@@ -1376,11 +1376,11 @@ later) and (b) chaining the alert inside `_scoring_job`.
   fan-out without touching the scheduler logic.
 ```
 
-- [ ] **Step 2: Flip M5 rows in `KANBAN.md`**
+- [x] **Step 2: Flip M5 rows in `KANBAN.md`**
 
 Change the `Status` column for M5-01 … M5-07 from `To Do` to `Done`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/decisions.md KANBAN.md

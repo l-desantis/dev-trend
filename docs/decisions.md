@@ -122,3 +122,33 @@ LangGraph from day one (project doc §4) and a single asyncio loop (ADR-002).
 - Brief generation is bounded: 12 niches × 90s ≤ 18 min wall-clock.
 - Adding a new dimension (e.g. competition in Phase 1.5) requires no graph
   changes — only `app/forecasting/scoring.py` and the prompt template.
+
+---
+
+## ADR-006: Daily digest delivery & spike-alert chaining
+
+**Status:** Accepted (2026-04-27)
+
+**Context.** M5 introduces two scheduled push flows: a daily digest at
+08:00 UTC, and a spike alert that must fire only when today's score
+truly differs from yesterday's persisted score. We considered (a) two
+independent crons (scoring, then a separate spike-alert cron 15 min
+later) and (b) chaining the alert inside `_scoring_job`.
+
+**Decision.**
+- Both digests and spike alerts target every chat in
+  `telegram_allowed_chat_ids`.
+- The spike alert is awaited inside `_scoring_job` immediately after
+  `score_all_niches`, before that coroutine returns.
+- The daily digest runs as its own cron (`digest_cron_hour/minute`).
+- Per-chat send failures are logged and skipped; one bad chat must
+  not abort the whole job.
+- The bot reference is passed into `build_scheduler` so jobs can
+  dispatch without a global.
+
+**Consequences.**
+- Spike alerts cannot race scoring — the same coroutine that wrote
+  `NicheScoreHistory` reads it.
+- If the bot is unconfigured, jobs no-op cleanly (log a WARNING).
+- Future per-user subscriptions (Phase 2) replace the allowlist
+  fan-out without touching the scheduler logic.
