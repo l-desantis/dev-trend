@@ -12,17 +12,12 @@ from sqlalchemy import delete, func, select
 from app.config import get_settings
 from app.db import get_session
 from app.features.trend_features import percentile_rank, rolling_slope
+from app.utils.datetime_utils import utc_start_of_day
 from app.models import Niche, NicheScoreHistory, NicheSignal, SourceItem
 
 log = structlog.get_logger(__name__)
 
 _DIMENSIONS = ("growth", "demand", "novelty")
-
-
-def _day_start(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 async def _mention_sum_for_day(session, niche_id: int, day_start: datetime) -> float:
@@ -52,7 +47,7 @@ async def _source_metric_for_day(
 
 
 async def _compute_growth_raw(session, niche_id: int, as_of: datetime, window_days: int) -> float:
-    today = _day_start(as_of)
+    today = utc_start_of_day(as_of)
     daily_sums: list[float] = []
     for offset in range(window_days - 1, -1, -1):  # oldest → newest
         day = today - timedelta(days=offset)
@@ -61,7 +56,7 @@ async def _compute_growth_raw(session, niche_id: int, as_of: datetime, window_da
 
 
 async def _compute_demand_raw(session, niche_id: int, as_of: datetime) -> float:
-    today = _day_start(as_of)
+    today = utc_start_of_day(as_of)
     seven_ago = today - timedelta(days=7)
     mentions_today = await _mention_sum_for_day(session, niche_id, today)
     stars_today = await _source_metric_for_day(session, niche_id, "github_stars_total", today)
@@ -90,13 +85,13 @@ async def _compute_novelty_raw(session, niche_id: int, as_of: datetime, max_age_
 async def _raw_history(
     session, niche_id: int, dimension: str, as_of: datetime, window_days: int
 ) -> list[float]:
-    window_start = _day_start(as_of) - timedelta(days=window_days)
+    window_start = utc_start_of_day(as_of) - timedelta(days=window_days)
     stmt = (
         select(NicheScoreHistory.score_breakdown_json)
         .where(
             NicheScoreHistory.niche_id == niche_id,
             NicheScoreHistory.scored_at >= window_start,
-            NicheScoreHistory.scored_at < _day_start(as_of),
+            NicheScoreHistory.scored_at < utc_start_of_day(as_of),
         )
     )
     rows = (await session.execute(stmt)).scalars().all()
@@ -119,7 +114,7 @@ async def score_niche(niche_id: int, as_of: datetime) -> NicheScoreHistory:
     Delete-then-insert on (niche_id, scored_at = midnight UTC of as_of).
     """
     settings = get_settings()
-    today = _day_start(as_of)
+    today = utc_start_of_day(as_of)
 
     async with get_session() as session:
         raws = {

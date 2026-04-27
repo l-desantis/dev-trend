@@ -7,13 +7,14 @@ errors from every node accumulate rather than overwrite each other.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
 from sqlalchemy import select
 
 from app.agents.state import OpportunityState
+from app.utils.datetime_utils import utc_now, utc_start_of_day
 from app.config import get_settings
 from app.db import get_session
 from app.forecasting.scoring import score_niche
@@ -27,12 +28,8 @@ _SOURCE_ITEM_LIMIT = 50
 _SIGNAL_LOOKBACK_DAYS = 7
 
 
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
 def _error(component: str, message: str) -> dict[str, Any]:
-    return {"component": component, "message": message, "at": _utcnow().isoformat()}
+    return {"component": component, "message": message, "at": utc_now().isoformat()}
 
 
 def _serialise_item(item: SourceItem) -> dict[str, Any]:
@@ -67,7 +64,7 @@ async def fetcher_node(state: OpportunityState) -> dict[str, Any]:
                 "errors": [_error("fetcher_node", f"niche {niche_id} not found")],
             }
 
-        cutoff = _utcnow() - timedelta(days=_SOURCE_ITEM_LOOKBACK_DAYS)
+        cutoff = utc_now() - timedelta(days=_SOURCE_ITEM_LOOKBACK_DAYS)
         items = (await session.execute(
             select(SourceItem)
             .where(
@@ -98,7 +95,7 @@ async def retriever_node(state: OpportunityState) -> dict[str, Any]:
     if not niche_id:
         return {"signals": [], "errors": [_error("retriever_node", "missing niche.id")]}
 
-    cutoff = _utcnow() - timedelta(days=_SIGNAL_LOOKBACK_DAYS)
+    cutoff = utc_now() - timedelta(days=_SIGNAL_LOOKBACK_DAYS)
     async with get_session() as session:
         rows = (await session.execute(
             select(NicheSignal)
@@ -132,18 +129,12 @@ def _forecast_label(growth_raw: float) -> str:
     return "Stable"
 
 
-def _start_of_day(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-
-
 async def forecaster_node(
     state: OpportunityState, *, as_of: datetime | None = None
 ) -> dict[str, Any]:
     niche_id = (state.get("niche") or {}).get("id")
-    when = as_of or _utcnow()
-    today = _start_of_day(when)
+    when = as_of or utc_now()
+    today = utc_start_of_day(when)
 
     if not niche_id:
         return {"errors": [_error("forecaster_node", "missing niche.id")]}

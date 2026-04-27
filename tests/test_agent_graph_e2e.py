@@ -12,7 +12,7 @@ from app.models import Niche, OpportunityBrief, SourceItem
 async def _seed(slug: str = "alpha") -> tuple[int, datetime]:
     """Returns (niche_id, now). Returns now so each test uses the same `as_of`
     that was used to create the seed data — fetcher/retriever node cutoffs are
-    `_utcnow()`-based, so we anchor to real now."""
+    `utc_now()`-based, so we anchor to real now."""
     async with get_session() as session:
         n = Niche(slug=slug, name=slug.title(), category="devtools",
                   summary="seed", keywords_json=[slug])

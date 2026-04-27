@@ -25,6 +25,7 @@ from app.agents.state import OpportunityState
 from app.db import get_session
 from app.llm.base import LLMAdapter
 from app.models import OpportunityBrief
+from app.utils.datetime_utils import utc_now, utc_start_of_day
 
 log = structlog.get_logger(__name__)
 
@@ -56,17 +57,11 @@ def build_graph(adapter: LLMAdapter):
     return sg.compile()
 
 
-def _start_of_day(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-
-
 async def _persist_brief(state: dict[str, Any], when: datetime) -> int:
     niche = state.get("niche") or {}
     brief = state.get("brief") or {}
     scorecard = state.get("scorecard") or {}
-    day_start = _start_of_day(when)
+    day_start = utc_start_of_day(when)
     day_end = day_start + timedelta(days=1)
 
     async with get_session() as session:
@@ -107,7 +102,7 @@ async def run_brief_for_niche(
     Returns the new OpportunityBrief.id, or None if persistence was skipped
     because the graph couldn't produce a brief (e.g. niche missing).
     """
-    when = as_of or datetime.now(UTC)
+    when = as_of or utc_now()
     graph = build_graph(adapter)
     initial: OpportunityState = {
         "niche": {"id": niche_id},

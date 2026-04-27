@@ -1,10 +1,11 @@
 """Daily aggregation: SourceItem rows → NicheSignal rows per niche×source×metric."""
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 
 import structlog
 from sqlalchemy import delete, func, select
 
 from app.db import get_session
+from app.utils.datetime_utils import utc_day_bounds
 from app.models import NicheSignal, SourceItem
 
 log = structlog.get_logger(__name__)
@@ -18,21 +19,13 @@ _SOURCE_METRICS: dict[str, tuple[str, str]] = {
 }
 
 
-def _day_bounds(as_of: datetime) -> tuple[datetime, datetime]:
-    if as_of.tzinfo is None:
-        as_of = as_of.replace(tzinfo=UTC)
-    day_start = as_of.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    day_end = day_start + timedelta(days=1)
-    return day_start, day_end
-
-
 async def aggregate_daily_signals(as_of: datetime) -> int:
     """Write one NicheSignal row per (niche_id, source_type, metric_name) for as_of's UTC day.
 
     Returns the number of rows written. Idempotent: existing signals with the same
     metric_timestamp day for touched niches are removed before insert.
     """
-    day_start, day_end = _day_bounds(as_of)
+    day_start, day_end = utc_day_bounds(as_of)
 
     async with get_session() as session:
         # mention_count per (niche_id, source_type)
