@@ -213,8 +213,61 @@ async def niche_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def trending_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_message:
-        await update.effective_message.reply_text(_COMING_SOON)
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select, func
+    from app.db import get_session
+    from app.models import Niche, SourceItem
+    from app.bot.formatter import bold, md_escape, truncate
+
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    window = timedelta(hours=settings.trending_window_hours)
+    cur_start, prior_start = now - window, now - 2 * window
+
+    async with get_session() as session:
+        cur = dict((await session.execute(
+            select(SourceItem.niche_id, func.count(SourceItem.id))
+            .where(SourceItem.ingested_at >= cur_start)
+            .where(SourceItem.niche_id.is_not(None))
+            .group_by(SourceItem.niche_id)
+        )).all())
+        prior = dict((await session.execute(
+            select(SourceItem.niche_id, func.count(SourceItem.id))
+            .where(SourceItem.ingested_at >= prior_start)
+            .where(SourceItem.ingested_at < cur_start)
+            .where(SourceItem.niche_id.is_not(None))
+            .group_by(SourceItem.niche_id)
+        )).all())
+        niches = {n.id: n for n in
+                  (await session.execute(select(Niche))).scalars().all()}
+
+    ranked = []
+    for nid, count in cur.items():
+        if count == 0 or nid not in niches:
+            continue
+        delta = count - prior.get(nid, 0)
+        ranked.append((delta, count, niches[nid]))
+    ranked.sort(key=lambda r: r[0], reverse=True)
+    ranked = ranked[: settings.trending_top_n]
+
+    if not ranked:
+        await update.effective_message.reply_text(
+            md_escape("No trending signals in the last 24h."),
+            parse_mode="MarkdownV2",
+        )
+        return
+
+    lines = [bold(f"Trending — last {settings.trending_window_hours}h")]
+    for delta, count, niche in ranked:
+        sign = "+" if delta >= 0 else ""
+        lines.append(
+            f"{bold(niche.name)} \\| "
+            f"{md_escape(str(count))} mentions "
+            f"\\({md_escape(sign + str(delta))} vs prior\\)"
+        )
+
+    text = truncate("\n".join(lines), settings.telegram_max_message_chars)
+    await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 
 
 async def sources_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -257,3 +257,55 @@ class TestNicheHandler:
         await niche_handler(update, mock_context)
         text = update.effective_message.reply_text.call_args.args[0].lower()
         assert "usage" in text or "/niche" in text
+
+
+class TestTrendingHandler:
+    async def test_trending_ranks_by_delta(self, mock_context):
+        from app.bot.handlers import trending_handler
+        from app.db import get_session, init_db
+        from app.models import Niche, SourceItem
+        from datetime import datetime, timedelta, timezone
+
+        await init_db()
+        now = datetime.now(timezone.utc)
+        async with get_session() as s:
+            n1 = Niche(name="Hot", slug="hot", category="c", keywords_json=[])
+            n2 = Niche(name="Cold", slug="cold", category="c", keywords_json=[])
+            s.add_all([n1, n2]); await s.flush()
+
+            def make_item(niche_id, when, ext):
+                return SourceItem(
+                    source_type="hn", external_id=ext, title=f"t-{ext}",
+                    body="", url="https://x", created_at=when,
+                    ingested_at=when, niche_id=niche_id, metadata_json={},
+                )
+
+            # Hot: 5 in last 24h, 1 prior 24h → delta +4
+            for i in range(5):
+                s.add(make_item(n1.id, now - timedelta(hours=2), f"h{i}"))
+            s.add(make_item(n1.id, now - timedelta(hours=30), "h-prev"))
+            # Cold: 1 in last 24h, 3 prior 24h → delta -2
+            s.add(make_item(n2.id, now - timedelta(hours=3), "c1"))
+            for i in range(3):
+                s.add(make_item(n2.id, now - timedelta(hours=30), f"c-prev-{i}"))
+            await s.commit()
+
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        await trending_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert "Hot" in text
+        # Hot listed before Cold (higher delta)
+        if "Cold" in text:
+            assert text.index("Hot") < text.index("Cold")
+
+    async def test_trending_no_signals(self, mock_context):
+        from app.bot.handlers import trending_handler
+        from app.db import init_db
+
+        await init_db()
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        await trending_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0].lower()
+        assert "no" in text and ("trending" in text or "signal" in text)
