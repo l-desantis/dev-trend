@@ -52,12 +52,12 @@
 
 | ID | Title | Description | Status | Depends On |
 |---|---|---|---|---|
-| M3-01 | Rolling-slope Growth | 7-day linear regression on per-niche `NicheSignal` mention counts. Output: slope value | To Do | M2-07 |
-| M3-02 | Demand signals | Aggregate mention count, GitHub star delta, and App Store install proxy per niche per day | To Do | M2-07 |
-| M3-03 | Novelty dimension | `1 − (age_of_newest_signal_days / 30)`, clamped [0, 1] | To Do | M2-07 |
-| M3-04 | Percentile normalisation | For each dimension: compute percentile rank over rolling 30-day window of per-niche values | To Do | M3-01, M3-02, M3-03 |
-| M3-05 | Composite scorer | Weighted sum: Growth 0.41 · Demand 0.35 · Novelty 0.24. Persist daily result to `NicheScoreHistory` | To Do | M3-04 |
-| M3-06 | ADR-003 | Write scoring-design ADR: three dimensions, percentile rank, weights, spike-alert logic | To Do | M3-05 |
+| M3-01 | Rolling-slope Growth | 7-day linear regression on per-niche `NicheSignal` mention counts. Output: slope value | Done | M2-07 |
+| M3-02 | Demand signals | Aggregate mention count, GitHub star delta, and App Store install proxy per niche per day | Done | M2-07 |
+| M3-03 | Novelty dimension | `1 − (age_of_newest_signal_days / 30)`, clamped [0, 1] | Done | M2-07 |
+| M3-04 | Percentile normalisation | For each dimension: compute percentile rank over rolling 30-day window of per-niche values | Done | M3-01, M3-02, M3-03 |
+| M3-05 | Composite scorer | Weighted sum: Growth 0.41 · Demand 0.35 · Novelty 0.24. Persist daily result to `NicheScoreHistory` | Done | M3-04 |
+| M3-06 | ADR-003 | Write scoring-design ADR: three dimensions, percentile rank, weights, spike-alert logic | Done | M3-05 |
 
 ---
 

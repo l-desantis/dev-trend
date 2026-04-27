@@ -74,3 +74,5 @@ Competition is dropped from Phase 1 and reintroduced in Phase 1.5 when a real ap
 **Spike alert:** fires once daily immediately after the niche scoring job. Compares today's `score_total` against the last persisted row in `NicheScoreHistory`. Threshold: +15 points (configurable).
 
 **Consequences:** Phase 1 competition signal is absent from scores. This is explicitly disclosed in the code and evaluation plan. Re-adding Competition requires changing the weights and updating `config.py` — no schema changes needed.
+
+**Implementation notes (M3):** Niches with fewer than 2 days of score history in the 30-day window receive a neutral percentile rank of 50.0 for each dimension. This prevents new niches from being unfairly ranked at 0 before history accrues, and avoids artificially inflating them to 100. The fallback is applied inside `percentile_rank()` in `app/features/trend_features.py` and is covered by `test_percentile_rank_insufficient_history_returns_neutral_50`.
