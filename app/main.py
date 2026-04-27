@@ -62,11 +62,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     bot_app = None
     if settings.telegram_bot_token:
+        from telegram import BotCommand
         from app.bot.bot import build_application
         bot_app = build_application()
         bot_app.bot_data["run_registry"] = registry
         await bot_app.initialize()
         await bot_app.start()
+        await bot_app.bot.set_my_commands([
+            BotCommand("start",    "Welcome message and feature overview"),
+            BotCommand("briefing", "Top 3 opportunity briefs ranked by score"),
+            BotCommand("niches",   "List all tracked niches with scores"),
+            BotCommand("niche",    "Full scorecard for a niche — /niche <slug>"),
+            BotCommand("trending", "Top niches by 24h mention-count delta"),
+            BotCommand("sources",  "Last ingestion status per source"),
+            BotCommand("help",     "Show all available commands"),
+        ])
         if bot_app.updater is not None:
             await bot_app.updater.start_polling()
         log.info("Telegram bot started", component="main")
