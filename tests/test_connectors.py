@@ -38,7 +38,7 @@ class FakeConnector(BaseConnector):
         super().__init__(client, matcher, registry)
         self._items = items
 
-    async def fetch(self, since: datetime | None = None) -> list[dict]:
+    async def fetch(self, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
         return [{}] * len(self._items)
 
     def normalize(self, raw: list[dict]) -> list[NormalizedItem]:
@@ -133,7 +133,7 @@ class TestBaseConnector:
         class RetryConnector(BaseConnector):
             source_type: ClassVar[str] = "retry_test"
 
-            async def fetch(self, since: datetime | None = None) -> list[dict]:
+            async def fetch(self, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
                 resp = await self._request_with_retry("GET", "https://example.com/api")
                 return resp.json().get("hits", [])
 
@@ -365,6 +365,24 @@ class TestGithubConnectorSince:
         assert len(pages_requested) == 1
         assert pages_requested[0] == ""
 
+    async def test_until_added_to_query(self):
+        """When until is set, GitHub query includes the upper-bound date filter."""
+        queries: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            queries.append(request.url.params.get("q", ""))
+            return httpx.Response(200, json={"items": []})
+
+        transport = httpx.MockTransport(handler)
+        client = httpx.AsyncClient(transport=transport)
+        connector = GithubConnector(client, _empty_matcher(), _registry())
+        since = datetime(2026, 1, 1, tzinfo=UTC)
+        until = datetime(2026, 1, 8, tzinfo=UTC)
+        await connector.fetch(since=since, until=until)
+        assert len(queries) == 1
+        assert "pushed:>2026-01-01" in queries[0]
+        assert "pushed:<=2026-01-08" in queries[0]
+
 
 class TestHNConnectorSince:
     async def test_paginates_with_since(self):
@@ -475,3 +493,54 @@ class TestRedditConnectorSince:
         await connector.fetch()
         assert len(requests_made) == 1
         assert "after" not in requests_made[0]
+
+
+class TestHNConnectorUntil:
+    async def test_until_added_to_numeric_filters(self):
+        """When until is set, HN numericFilters includes the upper-bound epoch."""
+        filters_seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            filters_seen.append(request.url.params.get("numericFilters", ""))
+            return httpx.Response(200, json={"hits": [], "nbPages": 1})
+
+        transport = httpx.MockTransport(handler)
+        client = httpx.AsyncClient(transport=transport)
+        connector = HNConnector(client, _empty_matcher(), _registry())
+        since = datetime(2026, 1, 1, tzinfo=UTC)
+        until = datetime(2026, 1, 8, tzinfo=UTC)
+        await connector.fetch(since=since, until=until)
+        assert len(filters_seen) == 1
+        assert f"created_at_i>{int(since.timestamp())}" in filters_seen[0]
+        assert f"created_at_i<={int(until.timestamp())}" in filters_seen[0]
+
+
+# ---------------------------------------------------------------------------
+# Weekly window helper
+# ---------------------------------------------------------------------------
+
+def test_weekly_windows_30_days():
+    """30-day window should produce 4 full weeks + 1 partial (or 5 windows)."""
+    from app.ingestion.backfill import _weekly_windows
+    since = datetime(2026, 1, 1, tzinfo=UTC)
+    until = datetime(2026, 1, 31, tzinfo=UTC)  # 30 days
+    windows = _weekly_windows(since, until)
+    assert len(windows) == 5  # 4×7 + 1×2
+    # First window starts at since
+    assert windows[0][0] == since
+    # Last window ends at until
+    assert windows[-1][1] == until
+    # No gaps and no overlaps
+    for i in range(len(windows) - 1):
+        assert windows[i][1] == windows[i + 1][0]
+
+
+def test_weekly_windows_exact_multiple():
+    """14-day window produces exactly 2 full 7-day windows."""
+    from app.ingestion.backfill import _weekly_windows
+    since = datetime(2026, 1, 1, tzinfo=UTC)
+    until = datetime(2026, 1, 15, tzinfo=UTC)  # 14 days
+    windows = _weekly_windows(since, until)
+    assert len(windows) == 2
+    assert windows[0] == (since, datetime(2026, 1, 8, tzinfo=UTC))
+    assert windows[1] == (datetime(2026, 1, 8, tzinfo=UTC), until)

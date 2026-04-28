@@ -8,17 +8,16 @@ class HNConnector(BaseConnector):
     source_type = "hn"
     _BASE = "https://hn.algolia.com/api/v1/search_by_date"
 
-    async def fetch(self, since: datetime | None = None) -> list[dict]:
+    async def fetch(self, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
         if since is None:
-            # Regular scheduled run: 6h window, single page
+            # Regular scheduled run: 6h window, single page, no upper bound
             since = datetime.now(UTC) - timedelta(hours=6)
-            since_epoch = int(since.timestamp())
             resp = await self._request_with_retry(
                 "GET",
                 self._BASE,
                 params={
                     "tags": "story",
-                    "numericFilters": f"created_at_i>{since_epoch}",
+                    "numericFilters": f"created_at_i>{int(since.timestamp())}",
                     "hitsPerPage": 200,
                 },
             )
@@ -26,7 +25,9 @@ class HNConnector(BaseConnector):
 
         # Backfill: paginate until Algolia cap or items cap
         settings = get_settings()
-        since_epoch = int(since.timestamp())
+        numeric_filters = f"created_at_i>{int(since.timestamp())}"
+        if until is not None:
+            numeric_filters += f",created_at_i<={int(until.timestamp())}"
         max_items = settings.backfill_max_items_per_source
         all_hits: list[dict] = []
         page = 0
@@ -36,7 +37,7 @@ class HNConnector(BaseConnector):
                 self._BASE,
                 params={
                     "tags": "story",
-                    "numericFilters": f"created_at_i>{since_epoch}",
+                    "numericFilters": numeric_filters,
                     "hitsPerPage": 1000,
                     "page": page,
                 },

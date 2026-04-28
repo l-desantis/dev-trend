@@ -83,7 +83,7 @@ class BaseConnector(ABC):
         self.log = structlog.get_logger(self.__class__.__name__)
 
     @abstractmethod
-    async def fetch(self, since: datetime | None = None) -> list[dict]:
+    async def fetch(self, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
         ...
 
     @abstractmethod
@@ -114,11 +114,11 @@ class BaseConnector(ABC):
             await session.commit()
             return result.rowcount
 
-    async def run(self, since: datetime | None = None) -> RunStatus:
+    async def run(self, since: datetime | None = None, until: datetime | None = None) -> RunStatus:
         self.registry.mark_running(self.source_type)
         start = time.monotonic()
         try:
-            raw = await self.fetch(since=since)
+            raw = await self.fetch(since=since, until=until)
             items = self.normalize(raw)
             inserted = await self.save(items)
             duration = time.monotonic() - start

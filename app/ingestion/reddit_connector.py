@@ -8,7 +8,7 @@ from app.ingestion.base import BaseConnector, NormalizedItem
 class RedditConnector(BaseConnector):
     source_type = "reddit"
 
-    async def fetch(self, since: datetime | None = None) -> list[dict]:
+    async def fetch(self, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
         settings = get_settings()
         headers = {"User-Agent": settings.reddit_user_agent}
         posts = []

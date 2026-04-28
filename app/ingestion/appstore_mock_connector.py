@@ -13,7 +13,7 @@ class AppStoreMockConnector(BaseConnector):
         super().__init__(*args, **kwargs)
         self.mock_dir = mock_dir
 
-    async def fetch(self, since: datetime | None = None) -> list[dict]:
+    async def fetch(self, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
         settings = get_settings()
         if not settings.enable_mock_appstore:
             return []
