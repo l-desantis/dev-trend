@@ -1,8 +1,8 @@
 # DevTrend — Project Document
 
-> **Version:** 3.0
-> **Last updated:** April 23, 2026
-> **Change log:** Phase 1 scope trimmed to four ingestion sources (GitHub, HN, Reddit, App Store mock). Prophet deferred to Phase 1.5 — replaced by rolling 7-day slope. Competition scoring dimension dropped from Phase 1 (score weights rebalanced to 0.41 / 0.35 / 0.24). Spike-alert monitor simplified to daily cadence. LangGraph retained from day one. Single asyncio event loop committed.
+> **Version:** 3.1
+> **Last updated:** April 28, 2026
+> **Change log:** v3.1 — Added bulk backfill on empty DB at startup so a fresh install can produce meaningful percentile-normalised briefs immediately instead of waiting for scheduled ingestion to accumulate ~30 days of history. v3.0 — Phase 1 scope trimmed to four ingestion sources (GitHub, HN, Reddit, App Store mock). Prophet deferred to Phase 1.5 — replaced by rolling 7-day slope. Competition scoring dimension dropped from Phase 1 (score weights rebalanced to 0.41 / 0.35 / 0.24). Spike-alert monitor simplified to daily cadence. LangGraph retained from day one. Single asyncio event loop committed.
 
 ---
 
@@ -76,6 +76,7 @@ SO tag volume growing. Several OSS repos with rising stars.
 | Data access | Real: GitHub API, HN Algolia API, Reddit public JSON; Mocked: App Store |
 | Niche taxonomy | Hand-curated YAML (`data/niches.yaml`) with 8–12 seeds + keyword lists |
 | Event loop | Single asyncio loop — `AsyncIOScheduler` + async bot + async FastAPI. No threads. |
+| Bulk backfill | One-shot 30-day historical fetch on startup when DB is empty; rebuilds per-day NicheSignal aggregates from each item's `created_at` so percentile normalisation works from day one. Gated by `BACKFILL_ON_EMPTY=true`. |
 | Testing | `MockLLMAdapter` (deterministic fixture briefs) + python-telegram-bot `Application` test helpers |
 
 ---
@@ -486,6 +487,39 @@ APScheduler (`AsyncIOScheduler`) runs in the same process as the Telegram bot an
 | Daily digest push | Daily 08:00 UTC | Send morning Telegram message |
 | Weekly pruning | Weekly (Sunday 03:00 UTC) | Delete SourceItem > 90 days, NicheSignal raw > 30 days; keep daily aggregates |
 
+### 12.1 Bulk Backfill on Empty DB
+
+On app startup, after niche sync and connector instantiation but **before** `scheduler.start()`, the lifespan checks `SELECT 1 FROM source_item LIMIT 1`. If the table is empty and `BACKFILL_ON_EMPTY=true`, a one-shot bulk backfill runs synchronously before the scheduler takes over.
+
+Flow:
+
+```
+db_empty? ── yes ──▶ bulk_backfill(history_days=30)
+                       │
+                       ├─ for each connector: fetch(since=now − 30d) with pagination
+                       ├─ rebuild_historical_signals(): bin SourceItems by created_at
+                       │  into per-day (niche, source) NicheSignal rows
+                       ├─ score_all_niches_for_date(d) for each day in window
+                       │  → NicheScoreHistory populated day-by-day
+                       └─ run_brief_for_niche() once per niche
+                                │
+                                ▼
+                       scheduler.start() (regular cadence resumes)
+```
+
+**Per-source historical depth:**
+
+| Source | Capability | Practical depth at 30d |
+|---|---|---|
+| GitHub | `pushed:>{since}` + `?per_page=100&page=N` | Full 30 days (capped at `BACKFILL_MAX_ITEMS_PER_SOURCE`) |
+| HN | Algolia `numericFilters=created_at_i>{epoch}` + paging | Full 30 days |
+| Reddit | `/r/{sub}/new.json?after=` cursor | Up to ~1000 items per sub — busy subs (`r/startups`) may only reach ~7-10 days; logged as `oldest_item_age_days` per sub |
+| App Store mock | Static JSON | All mock data loaded |
+
+**Idempotency**: relies on the existing `(source_type, external_id)` uniqueness — re-running is a no-op. Subsequent restarts find a non-empty DB and skip the backfill.
+
+**Manual trigger**: same logic is exposed via `python -m scripts.run_ingestion --backfill-days 30` for dev/recovery without restarting the app.
+
 ---
 
 ## 13. Configuration
@@ -518,6 +552,11 @@ ENABLE_MOCK_APPSTORE=true
 # Scheduling
 DAILY_DIGEST_TIME=08:00
 SPIKE_ALERT_THRESHOLD=15
+
+# Bulk backfill (runs once on startup if SourceItem table is empty)
+BACKFILL_ON_EMPTY=true
+BACKFILL_HISTORY_DAYS=30
+BACKFILL_MAX_ITEMS_PER_SOURCE=1000
 
 # Logging
 LOG_LEVEL=INFO
@@ -576,6 +615,8 @@ Phase 1 evaluation is manual and checklist-based. A replay harness using mock hi
 | Brief generation timeout | Low | Per-niche asyncio.wait_for(90s); log and skip; APScheduler max_instances=1 |
 | Telegram message > 4096 chars | Low | Truncation logic in formatter.py with "…see /niche" footer |
 | SQLite size / pruning miss | Low | Weekly pruning job; alert in logs if last pruning > 10 days stale |
+| Bulk-backfill rate-limit pile-up on first startup | Medium | Sequential per-connector fetch (not parallel); existing `_request_with_retry` honours Retry-After; cap items per source via `BACKFILL_MAX_ITEMS_PER_SOURCE` |
+| Reddit 1000-post-per-sub ceiling on busy subs | Low | Documented limitation; backfill report logs `oldest_item_age_days` per sub so partial coverage is visible. Full 30-day depth not guaranteed for `r/startups`-class subs |
 
 ---
 
@@ -625,6 +666,20 @@ Phase 1 evaluation is manual and checklist-based. A replay harness using mock hi
 - [ ] `/trending` — top 24h signals
 - [ ] Daily digest scheduler hook + MarkdownV2 formatter
 - [ ] Daily spike alert: post-scoring comparison against `NicheScoreHistory`
+
+### Milestone 5.5 — Bulk Backfill on Empty DB
+- [ ] Extend `BaseConnector.fetch()` / `run()` to accept optional `since: datetime`
+- [ ] GitHub connector: paginate `pushed:>{since}` + `?page=N`
+- [ ] HN connector: replace hardcoded 6h lookback with `since`; paginate via Algolia `page`
+- [ ] Reddit connector: per-sub `after`-cursor pagination until `since` reached or 1000-item ceiling; log `oldest_item_age_days`
+- [ ] App Store mock connector: accept `since` param (no-op)
+- [ ] `app/ingestion/backfill.py` — `bulk_backfill(history_days)` orchestrator with structured `BackfillReport`
+- [ ] `rebuild_historical_signals(history_days)` — bin SourceItems by `created_at` into per-day NicheSignal rows
+- [ ] `score_all_niches_for_date(d)` variant in `app/forecasting/scoring.py` so `NicheScoreHistory` is populated day-by-day
+- [ ] Lifespan hook in `app/main.py`: run backfill if `BACKFILL_ON_EMPTY=true` AND DB is empty, before `scheduler.start()`
+- [ ] Config + `.env.example`: `BACKFILL_ON_EMPTY`, `BACKFILL_HISTORY_DAYS`, `BACKFILL_MAX_ITEMS_PER_SOURCE`
+- [ ] CLI parity: extend `scripts/run_ingestion.py` with `--backfill-days N`
+- [ ] Write ADR-007 (bulk backfill on empty DB: trigger, depth, signal-rebuild strategy)
 
 ### Milestone 6 — Hardening and Evaluation
 - [ ] Weekly pruning job wired and tested
