@@ -152,3 +152,38 @@ later) and (b) chaining the alert inside `_scoring_job`.
 - If the bot is unconfigured, jobs no-op cleanly (log a WARNING).
 - Future per-user subscriptions (Phase 2) replace the allowlist
   fan-out without touching the scheduler logic.
+
+---
+
+## ADR-007 — Bulk backfill on empty DB at startup
+
+**Date:** 2026-04-28
+**Status:** Accepted
+
+**Context:** Percentile-rank normalisation (30-day window) produces undifferentiated scores (all ~50) when the DB contains fewer than ~7 days of NicheSignal history. On a fresh install, the scheduler alone would take a full day before the first scoring run — and ~30 days before scores became meaningful.
+
+**Decision:** On startup, after niches are synced and connectors are instantiated, check `SELECT id FROM source_items LIMIT 1`. If the table is empty and `BACKFILL_ON_EMPTY=true`:
+
+1. Run each connector sequentially with `connector.run(since=now−history_days)`. Sequential (not parallel) to avoid rate-limit pile-ups; each connector honours the existing `_request_with_retry` backoff.
+2. Bin the ingested `SourceItem` rows by their original `created_at` date into per-day `NicheSignal` rows via `rebuild_historical_signals(history_days)`. This produces the same signal structure the daily `aggregate_daily_signals` job produces, but across the full historical window.
+3. Score all niches day-by-day in chronological order (oldest first) via the existing `score_all_niches(as_of)` so each day's percentile rank can draw on prior days' history as it accumulates.
+4. Generate `OpportunityBrief` rows for each niche via the existing agent graph.
+
+**Trigger condition:** `BACKFILL_ON_EMPTY=true` (default) AND `source_items` table is empty. Subsequent restarts find a non-empty table and skip (`db_not_empty_skip_backfill` log line).
+
+**History depth per source:**
+
+| Source | Strategy | Practical depth |
+|---|---|---|
+| GitHub | `pushed:>{since}` + page=1..N | Full 30 days (cap: `BACKFILL_MAX_ITEMS_PER_SOURCE`) |
+| HN | Algolia `numericFilters=created_at_i>{epoch}` + page=0..N | Full 30 days (Algolia 1000-item ceiling) |
+| Reddit | `/r/{sub}/new.json?after=` cursor per sub | Up to ~1000 items per sub; busy subs (`r/startups`) may reach only ~7-10 days — logged as `oldest_item_age_days` |
+| App Store mock | Static JSON, `since` ignored | All mock data loaded |
+
+**Idempotency:** relies on the existing `(source_type, external_id)` unique constraint on `SourceItem` — re-running the backfill inserts zero duplicates. `rebuild_historical_signals` deletes then re-inserts NicheSignal rows for each touched (niche, day) pair.
+
+**Consequences:**
+- `/briefing` returns meaningful, percentile-normalised briefs immediately after first launch.
+- The same `bulk_backfill()` function is exposed via `scripts/run_ingestion.py --backfill-days N` for dev/recovery without restarting the app.
+- Reddit's 1000-post-per-sub ceiling means partial coverage for high-volume subs; this is documented and logged, not silently ignored.
+- The backfill is synchronous in the lifespan (blocking startup) — acceptable because it runs only once on an empty DB.

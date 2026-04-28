@@ -11,7 +11,7 @@ class GithubConnector(BaseConnector):
     source_type = "github"
     _BASE = "https://api.github.com/search/repositories"
 
-    async def fetch(self) -> list[dict]:
+    async def fetch(self, since: datetime | None = None) -> list[dict]:
         settings = get_settings()
         headers = {"Accept": "application/vnd.github+json"}
         if settings.github_token:
@@ -19,19 +19,49 @@ class GithubConnector(BaseConnector):
         else:
             log.warning("GITHUB_TOKEN not set — running anonymous (60 req/h)", component="GithubConnector")
 
-        since = (datetime.now(UTC) - timedelta(days=settings.github_search_lookback_days)).strftime("%Y-%m-%d")
-        resp = await self._request_with_retry(
-            "GET",
-            self._BASE,
-            headers=headers,
-            params={
-                "q": f"stars:>{settings.github_star_threshold} pushed:>{since}",
-                "sort": "updated",
-                "order": "desc",
-                "per_page": 100,
-            },
-        )
-        return resp.json().get("items", [])
+        if since is None:
+            since = datetime.now(UTC) - timedelta(days=settings.github_search_lookback_days)
+            # Regular scheduled run: single page
+            since_str = since.strftime("%Y-%m-%d")
+            resp = await self._request_with_retry(
+                "GET",
+                self._BASE,
+                headers=headers,
+                params={
+                    "q": f"stars:>{settings.github_star_threshold} pushed:>{since_str}",
+                    "sort": "updated",
+                    "order": "desc",
+                    "per_page": 100,
+                },
+            )
+            return resp.json().get("items", [])
+
+        # Backfill: paginate until empty or cap reached
+        since_str = since.strftime("%Y-%m-%d")
+        max_items = settings.backfill_max_items_per_source
+        all_items: list[dict] = []
+        page = 1
+        while len(all_items) < max_items:
+            resp = await self._request_with_retry(
+                "GET",
+                self._BASE,
+                headers=headers,
+                params={
+                    "q": f"stars:>{settings.github_star_threshold} pushed:>{since_str}",
+                    "sort": "updated",
+                    "order": "desc",
+                    "per_page": 100,
+                    "page": page,
+                },
+            )
+            batch = resp.json().get("items", [])
+            if not batch:
+                break
+            all_items.extend(batch)
+            if len(batch) < 100:
+                break
+            page += 1
+        return all_items[:max_items]
 
     def normalize(self, raw: list[dict]) -> list[NormalizedItem]:
         items = []

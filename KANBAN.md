@@ -92,6 +92,28 @@
 
 ---
 
+## Milestone 5.5 — Bulk Backfill on Empty DB
+
+> Goal: a fresh install populates the DB with ~30 days of real source history on first launch and produces meaningful percentile-normalised briefs immediately, instead of waiting for scheduled ingestion to accumulate history.
+
+| ID | Title | Description | Status | Depends On |
+|---|---|---|---|---|
+| M55-01 | `since` parameter on connector base | Add optional `since: datetime \| None = None` to `BaseConnector.fetch()` and `run()`; default behaviour unchanged | Done | M5-07 |
+| M55-02 | GitHub paginated backfill | Honour `since` via `pushed:>{since}`; paginate `?per_page=100&page=N` until empty or `BACKFILL_MAX_ITEMS_PER_SOURCE` reached | Done | M55-01 |
+| M55-03 | HN paginated backfill | Replace hardcoded 6h lookback with `since`; raise `hitsPerPage`; paginate via `&page=` up to Algolia 1000-item limit | Done | M55-01 |
+| M55-04 | Reddit paginated backfill | Per-sub `?after=` cursor pagination until oldest item < `since` or ~1000-item ceiling; log `oldest_item_age_days` per sub | Done | M55-01 |
+| M55-05 | App Store mock — accept `since` | Signature parity only; mock data loaded as-is | Done | M55-01 |
+| M55-06 | `rebuild_historical_signals` helper | Bin `SourceItem.created_at` into per-day `(niche_id, source_type, metric_name, day)` NicheSignal upserts across the backfill window | Done | M55-02, M55-03, M55-04, M55-05 |
+| M55-07 | `score_all_niches_for_date(d)` | Implemented via existing `score_all_niches(as_of)` — backfill orchestrator calls it per-day; no new function needed | Done | M55-06 |
+| M55-08 | `app/ingestion/backfill.py` orchestrator | `bulk_backfill(connectors, history_days)` runs sequential fetch → signal rebuild → daily scoring → brief generation; returns structured `BackfillReport`; emits one structured log line | Done | M55-06, M55-07 |
+| M55-09 | Startup lifespan hook | In `app/main.py` lifespan, after `sync_niches_from_yaml()` and before `scheduler.start()`: if `BACKFILL_ON_EMPTY=true` and `SELECT 1 FROM source_item LIMIT 1` is empty, await `bulk_backfill()` | Done | M55-08 |
+| M55-10 | Config + `.env.example` | Add `BACKFILL_ON_EMPTY` (default true), `BACKFILL_HISTORY_DAYS` (default 30), `BACKFILL_MAX_ITEMS_PER_SOURCE` (default 1000); document in `.env.example` | Done | M55-08 |
+| M55-11 | CLI parity | Extend `scripts/run_ingestion.py` with `--backfill-days N` flag that calls `bulk_backfill()` directly | Done | M55-08 |
+| M55-12 | ADR-007 | Document bulk-backfill design: trigger condition, history depth, NicheSignal historical rebuild strategy, Reddit ceiling caveat | Done | M55-09 |
+| M55-13 | Tests | Connector `since`/pagination tests + `rebuild_historical_signals` test (N×days rows) + idempotency test (re-run produces no duplicates) | Done | M55-11 |
+
+---
+
 ## Milestone 6 — Hardening and Evaluation
 
 | ID | Title | Description | Status | Depends On |

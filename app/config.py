@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     brief_max_evidence_items: int = 5
     brief_min_summary_chars: int = 50
 
+    # Bulk backfill (runs once on startup when DB is empty)
+    backfill_on_empty: bool = True
+    backfill_history_days: int = 30
+    backfill_max_items_per_source: int = 1000
+
     # Logging
     log_level: str = "INFO"
 

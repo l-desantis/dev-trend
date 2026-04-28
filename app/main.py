@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from app.api.routes_health import router as health_router
 from app.config import get_settings
-from app.db import init_db
+from app.db import get_session, init_db
 
 from app.ingestion.appstore_mock_connector import AppStoreMockConnector
 from app.ingestion.base import ConnectorRunRegistry
@@ -82,6 +82,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         log.info("Telegram bot started", component="main")
     else:
         log.warning("TELEGRAM_BOT_TOKEN not set — bot disabled", component="main")
+
+    # Bulk backfill: runs once if DB is empty and BACKFILL_ON_EMPTY=true
+    if settings.backfill_on_empty:
+        from sqlalchemy import select as _select
+        from app.models import SourceItem as _SourceItem
+        async with get_session() as _session:
+            _row = await _session.execute(_select(_SourceItem.id).limit(1))
+            db_empty = _row.first() is None
+        if db_empty:
+            log.info("db_empty_starting_backfill", component="main")
+            from app.ingestion.backfill import bulk_backfill
+            from app.llm.mock_adapter import MockLLMAdapter
+            from app.llm.ollama_adapter import OllamaAdapter
+            _adapter = (
+                OllamaAdapter(base_url=settings.ollama_base_url, model=settings.ollama_model)
+                if settings.llm_provider == "ollama"
+                else MockLLMAdapter()
+            )
+            _report = await bulk_backfill(
+                connectors, _adapter, history_days=settings.backfill_history_days
+            )
+            log.info("bulk_backfill_complete", component="main", **_report.to_dict())
+        else:
+            log.info("db_not_empty_skip_backfill", component="main")
 
     scheduler = build_scheduler(
         connectors, registry, settings,
