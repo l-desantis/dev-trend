@@ -115,6 +115,11 @@ class Settings(BaseSettings):
     backfill_history_days: int = 30
     backfill_max_items_per_source: int = 1000
 
+    # Pruning
+    source_retention_days: int = 90
+    signal_retention_days: int = 30
+    pruning_cron_hour: int = 3
+
     # Logging
     log_level: str = "INFO"
 

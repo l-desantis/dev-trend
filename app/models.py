@@ -104,3 +104,14 @@ class OpportunityBrief(Base):
 
     def __repr__(self) -> str:
         return f"<OpportunityBrief niche_id={self.niche_id} score={self.score_total}>"
+
+
+class MaintenanceState(Base):
+    """One-row table tracking maintenance job state (e.g. last pruning run)."""
+    __tablename__ = "maintenance_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_pruned_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    def __repr__(self) -> str:
+        return f"<MaintenanceState last_pruned_at={self.last_pruned_at!r}>"

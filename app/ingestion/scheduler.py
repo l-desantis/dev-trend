@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -17,7 +17,10 @@ from app.ingestion.base import BaseConnector, ConnectorRunRegistry
 from app.llm.base import LLMAdapter
 from app.llm.mock_adapter import MockLLMAdapter
 from app.llm.ollama_adapter import OllamaAdapter
-from app.models import Niche
+from app.maintenance.pruning import prune_old_data
+from app.models import MaintenanceState, Niche
+
+_STALE_PRUNING_THRESHOLD_DAYS = 10
 
 log = structlog.get_logger(__name__)
 
@@ -57,6 +60,25 @@ def build_scheduler(
 
     async def _scoring_job():
         now = datetime.now(UTC)
+        try:
+            async with get_session() as session:
+                state = (await session.execute(select(MaintenanceState))).scalar_one_or_none()
+            if state is None or state.last_pruned_at is None:
+                log.warning("pruning_never_run", component="scheduler")
+            else:
+                last = state.last_pruned_at
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=UTC)
+                if (now - last) > timedelta(days=_STALE_PRUNING_THRESHOLD_DAYS):
+                    log.warning(
+                        "pruning_stale",
+                        component="scheduler",
+                        last_pruned_at=last.isoformat(),
+                        days_since=round((now - last).days),
+                    )
+        except Exception as exc:
+            log.warning("pruning_stale_check_failed", component="scheduler", error=str(exc))
+
         try:
             rows = await aggregate_daily_signals(now)
             niches = await score_all_niches(now)
@@ -132,9 +154,29 @@ def build_scheduler(
         replace_existing=True,
     )
 
+    async def _pruning_job():
+        now = datetime.now(UTC)
+        try:
+            await prune_old_data(
+                now,
+                source_retention_days=settings.source_retention_days,
+                signal_retention_days=settings.signal_retention_days,
+            )
+        except Exception as exc:
+            log.error("Weekly pruning failed", component="scheduler", error=str(exc))
+
+    scheduler.add_job(
+        _pruning_job,
+        CronTrigger(day_of_week="sun", hour=settings.pruning_cron_hour, minute=0),
+        id="weekly_pruning",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+
     log.info(
         "Scheduler built",
         component="scheduler",
-        jobs=list(connector_map.keys()) + ["daily_scoring", "daily_brief_generation", "daily_digest"],
+        jobs=list(connector_map.keys()) + ["daily_scoring", "daily_brief_generation", "daily_digest", "weekly_pruning"],
     )
     return scheduler

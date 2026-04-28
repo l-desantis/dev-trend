@@ -544,3 +544,87 @@ def test_weekly_windows_exact_multiple():
     assert len(windows) == 2
     assert windows[0] == (since, datetime(2026, 1, 8, tzinfo=UTC))
     assert windows[1] == (datetime(2026, 1, 8, tzinfo=UTC), until)
+
+
+# ---------------------------------------------------------------------------
+# M6-02 gap-fill: GitHub 4xx, Reddit 1000-item ceiling, AppStore since= no-op
+# ---------------------------------------------------------------------------
+
+class TestGithubConnector4xx:
+    async def test_403_results_in_error_status(self):
+        """A 403 from GitHub (rate-limit / bad token) marks the run as error, no crash."""
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(403)
+
+        transport = httpx.MockTransport(handler)
+        client = httpx.AsyncClient(transport=transport)
+        connector = GithubConnector(client, _empty_matcher(), _registry())
+        status = await connector.run()
+        assert status.last_status == "error"
+        assert status.error is not None
+
+
+class TestRedditCeilingLog:
+    async def test_1000_item_ceiling_log_fires(self, monkeypatch):
+        """When 1000 items are collected without hitting the since boundary,
+        the 'Reddit sub backfill hit 1000-item ceiling' log line fires."""
+        import structlog.testing
+        from datetime import timedelta
+
+        now_ts = datetime.now(UTC).timestamp()
+        page_count = [0]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            page_count[0] += 1
+            # 10 pages × 100 items = 1000 items total; page 10 has no after cursor.
+            children = [
+                {
+                    "data": {
+                        "name": f"t3_{page_count[0]}_{i}",
+                        "title": "T",
+                        "created_utc": now_ts,
+                        "permalink": "/r/startups/comments/x",
+                        "selftext": "",
+                    }
+                }
+                for i in range(100)
+            ]
+            after = "t3_next" if page_count[0] < 10 else None
+            return httpx.Response(200, json={"data": {"children": children, "after": after}})
+
+        monkeypatch.setenv("REDDIT_SUBREDDITS", "startups")
+        from app.config import get_settings
+        get_settings.cache_clear()
+
+        from unittest.mock import AsyncMock
+        monkeypatch.setattr("asyncio.sleep", AsyncMock())
+
+        transport = httpx.MockTransport(handler)
+        client = httpx.AsyncClient(transport=transport)
+        connector = RedditConnector(client, _empty_matcher(), _registry())
+        since = datetime.now(UTC) - timedelta(days=60)
+
+        with structlog.testing.capture_logs() as cap:
+            await connector.fetch(since=since)
+
+        ceiling_logs = [e for e in cap if "ceiling" in e.get("event", "").lower()]
+        assert ceiling_logs, f"No ceiling log found; captured: {cap}"
+
+
+class TestAppStoreSinceNoOp:
+    async def test_since_does_not_filter_mock_data(self, monkeypatch):
+        """Passing a recent since to AppStoreMockConnector returns the same records
+        as calling without since — confirming the mock is always fully loaded."""
+        monkeypatch.setenv("ENABLE_MOCK_APPSTORE", "true")
+        from app.config import get_settings
+        get_settings.cache_clear()
+
+        client = httpx.AsyncClient()
+        mock_dir = Path("data/mock")
+        connector = AppStoreMockConnector(client, _empty_matcher(), _registry(), mock_dir=mock_dir)
+
+        raw_all = await connector.fetch()
+        raw_with_since = await connector.fetch(since=datetime(2026, 4, 27, tzinfo=UTC))
+
+        assert len(raw_all) == len(raw_with_since)
+        assert raw_all == raw_with_since

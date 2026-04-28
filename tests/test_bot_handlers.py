@@ -309,3 +309,85 @@ class TestTrendingHandler:
         await trending_handler(update, mock_context)
         text = update.effective_message.reply_text.call_args.args[0].lower()
         assert "no" in text and ("trending" in text or "signal" in text)
+
+
+# ---------------------------------------------------------------------------
+# M6-05 gap-fill: allowlist combined check, MarkdownV2 truncation, /sources timestamp
+# ---------------------------------------------------------------------------
+
+class TestAllowlistSecurityPath:
+    async def test_unknown_chat_rejected_and_no_downstream(self, mock_context: MagicMock) -> None:
+        """Unknown chat ID: polite rejection sent AND ApplicationHandlerStop raised
+        (preventing any downstream command handler from executing)."""
+        update = _make_update(chat_id=99999)
+        with patch("app.bot.middleware.get_settings") as mock_settings:
+            mock_settings.return_value.telegram_allowed_chat_ids = [12345]
+            with pytest.raises(ApplicationHandlerStop):
+                await _allowlist_check(update, mock_context)
+        update.effective_message.reply_text.assert_called_once_with(
+            "This bot is private. Access is restricted."
+        )
+
+
+class TestNicheHandlerTruncation:
+    async def test_long_brief_is_truncated_to_4096(self, mock_context: MagicMock) -> None:
+        """A niche with a 5000-char brief body produces a reply ≤ 4096 chars."""
+        from app.bot.handlers import niche_handler
+        from app.db import get_session, init_db
+        from app.models import Niche, OpportunityBrief
+        from datetime import datetime, timezone
+
+        await init_db()
+        long_summary = "A" * 5000
+        async with get_session() as s:
+            n = Niche(name="LongBrief", slug="long-brief", category="c", keywords_json=[])
+            s.add(n)
+            await s.flush()
+            s.add(OpportunityBrief(
+                niche_id=n.id,
+                headline="LongBrief — Score 80",
+                summary=long_summary,
+                score_total=80.0,
+                score_breakdown_json={"growth": 80, "demand": 80, "novelty": 80},
+                evidence_json=[],
+                forecast_label="Rising",
+                has_issues=False,
+                generated_at=datetime.now(timezone.utc),
+                model_name="mock",
+            ))
+            await s.commit()
+
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        mock_context.args = ["long-brief"]
+        await niche_handler(update, mock_context)
+
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert len(text) <= 4096
+        assert "…" in text  # truncation footer present
+
+
+class TestSourcesRegistryTimestamp:
+    async def test_sources_shows_last_run_timestamp(self, mock_context: MagicMock) -> None:
+        """When registry has a successful run, /sources includes the last-run timestamp."""
+        from datetime import datetime, timezone, timedelta
+        from app.db import init_db
+
+        await init_db()
+        registry = ConnectorRunRegistry()
+        registry.mark_running("github")
+        registry.mark_success("github", items=10, duration=2.0)
+        # Manually set a predictable last_run_at
+        expected_ts = datetime(2026, 4, 20, 9, 0, tzinfo=timezone.utc)
+        registry._statuses["github"].last_run_at = expected_ts
+
+        mock_context.application = MagicMock()
+        mock_context.application.bot_data = {"run_registry": registry}
+        update = _make_update(chat_id=42)
+        update.effective_message.reply_text = AsyncMock()
+        await sources_handler(update, mock_context)
+
+        text = update.effective_message.reply_text.call_args.args[0]
+        # Hyphens and colons are MarkdownV2-escaped, so check escaped form.
+        assert "2026\\-04\\-20" in text
+        assert "09:00" in text

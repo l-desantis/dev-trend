@@ -103,3 +103,22 @@ async def test_run_brief_marks_has_issues_when_summary_empty():
             select(OpportunityBrief).where(OpportunityBrief.niche_id == nid)
         )).scalar_one()
     assert row.has_issues is True
+
+
+# ---------------------------------------------------------------------------
+# M6-04 gap-fill: triggered_by propagation through the graph
+# ---------------------------------------------------------------------------
+
+async def test_triggered_by_preserved_in_final_state():
+    """triggered_by set in initial state survives through all graph nodes."""
+    await init_db()
+    nid, _ = await _seed()
+    graph = build_graph(MockLLMAdapter())
+
+    final = await graph.ainvoke({
+        "niche": {"id": nid},
+        "errors": [],
+        "triggered_by": "test_runner",
+    })
+
+    assert final.get("triggered_by") == "test_runner"

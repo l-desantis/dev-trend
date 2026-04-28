@@ -187,3 +187,25 @@ later) and (b) chaining the alert inside `_scoring_job`.
 - The same `bulk_backfill()` function is exposed via `scripts/run_ingestion.py --backfill-days N` for dev/recovery without restarting the app.
 - Reddit's 1000-post-per-sub ceiling means partial coverage for high-volume subs; this is documented and logged, not silently ignored.
 - The backfill is synchronous in the lifespan (blocking startup) — acceptable because it runs only once on an empty DB.
+
+---
+
+## ADR-008 — Data retention: 90-day source items / 30-day non-aggregate signals / weekly Sunday 03:00 UTC
+
+**Date:** 2026-04-28
+**Status:** Accepted
+
+**Context:** Without a retention policy the SQLite DB grows unbounded. `SourceItem` rows are the largest contributor (one row per ingested post/repo/app). `NicheSignal` rows produced by the daily aggregator are smaller but accumulate at roughly `(niches × sources × 2 metrics) / day`. Score history (`NicheScoreHistory`) and briefs (`OpportunityBrief`) must be retained forever — they are the primary input for percentile-rank normalisation and the trend-direction labelling shown to users.
+
+**Decision:**
+
+- **SourceItem** rows where `created_at < now − 90d` are deleted weekly. Items without a `created_at` (NULL) are not matched and remain.
+- **NicheSignal** rows where `metric_timestamp < now − 30d` **and** `metric_name NOT IN` the daily-aggregate keep-list are deleted weekly. The keep-list (`mention_count`, `github_stars_total`, `hn_points_total`, `reddit_ups_total`, `appstore_install_proxy`) covers every metric_name the current aggregator writes, so all existing signals survive. Future non-aggregate signal types (e.g. per-event raw signals) would be pruned after 30 days.
+- **NicheScoreHistory**, **OpportunityBrief**, **Niche** are never pruned.
+- A new one-row `MaintenanceState` ORM model persists `last_pruned_at`. If a scoring job starts and `last_pruned_at` is NULL or older than 10 days, a `pruning_stale` warning is logged.
+- The pruning job runs every Sunday at 03:00 UTC (configurable via `PRUNING_CRON_HOUR`). This is 1 hour after the brief generation job and avoids the peak ingestion window.
+
+**Consequences:**
+- DB growth is bounded. A system ingesting from all four sources for 10 niches generates ~400 SourceItems/day; after 90 days steady-state that is ~36 000 rows, well within SQLite limits.
+- Daily aggregate signals accumulate indefinitely. This is intentional: percentile rank needs the full history of normalised Growth/Demand/Novelty raws, not just the last 30 days.
+- The 10-day stale alert catches missed Sunday jobs (e.g. scheduler downtime) without flooding logs on every scoring run.

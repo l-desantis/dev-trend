@@ -265,3 +265,53 @@ async def test_reviewer_flags_missing_evidence():
     out = await reviewer_node(state)
     assert out["brief"]["has_issues"] is True
     assert any("evidence" in g.lower() for g in out["brief"]["gaps"])
+
+
+# ---------------------------------------------------------------------------
+# M6-04 gap-fill: reviewer log line, reporter 90s timeout via settings patch
+# ---------------------------------------------------------------------------
+
+async def test_reviewer_emits_warning_log_on_has_issues():
+    """reviewer_node logs a warning when brief has issues."""
+    import structlog.testing
+    state = _brief_state("short", evidence=[])  # both gaps: short summary + no evidence
+    with structlog.testing.capture_logs() as cap:
+        out = await reviewer_node(state)
+    assert out["brief"]["has_issues"] is True
+    warning_events = [e for e in cap if e.get("log_level") == "warning"]
+    assert any("issue" in e.get("event", "").lower() for e in warning_events), (
+        f"Expected 'has issues' warning log; got: {cap}"
+    )
+
+
+async def test_reporter_timeout_via_settings_monkeypatch(monkeypatch):
+    """Reporter honours brief_per_niche_timeout_s from settings, returns empty brief on timeout."""
+    import asyncio
+    from unittest.mock import MagicMock
+
+    class SlowAdapter(MockLLMAdapter):
+        async def generate_brief(self, context):  # type: ignore[override]
+            await asyncio.sleep(0.2)  # sleeps longer than patched timeout
+            return "should not arrive"
+
+    mock_settings = MagicMock()
+    mock_settings.brief_per_niche_timeout_s = 0.05
+    mock_settings.brief_max_evidence_items = 5
+    monkeypatch.setattr("app.agents.nodes.get_settings", lambda: mock_settings)
+
+    state: OpportunityState = {
+        "niche": {"id": 1, "slug": "x", "name": "X", "category": "c", "summary": ""},
+        "source_items": [],
+        "signals": [],
+        "scorecard": {"score_total": 0.0, "breakdown": {
+            "growth": {"raw": 0, "normalized": 0},
+            "demand": {"raw": 0, "normalized": 0},
+            "novelty": {"raw": 0, "normalized": 0},
+        }},
+        "forecast": {"label": "Stable", "slope": 0.0},
+        "errors": [],
+    }
+    out = await reporter_node(state, adapter=SlowAdapter())
+
+    assert out["brief"]["summary"] == ""
+    assert any(e["component"] == "reporter_node" for e in out.get("errors", []))
