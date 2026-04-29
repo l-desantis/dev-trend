@@ -177,6 +177,7 @@ class CandidateBrief(Base):
         DateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
     model_name: Mapped[str | None] = mapped_column(String(100))
+    evidence_json: Mapped[Any | None] = mapped_column(JSON(none_as_null=True))
 
     candidate: Mapped["OpportunityCandidate"] = relationship(back_populates="briefs")
 
@@ -191,13 +192,13 @@ class CandidateFeedback(Base):
     candidate_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("opportunity_candidates.id"), nullable=False, index=True
     )
-    user_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     brief_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("candidate_briefs.id"), nullable=True
     )
-    rating: Mapped[int | None] = mapped_column(Integer)
-    comment: Mapped[str | None] = mapped_column(Text)
-    submitted_at: Mapped[datetime] = mapped_column(
+    label: Mapped[str] = mapped_column(String(10), nullable=False)  # 'up' | 'down'
+    chat_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
 
@@ -210,6 +211,25 @@ class CandidateFeedback(Base):
 
     def __repr__(self) -> str:
         return f"<CandidateFeedback candidate_id={self.candidate_id} user={self.user_id!r}>"
+
+
+class LifecycleEvent(Base):
+    __tablename__ = "lifecycle_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("opportunity_candidates.id"), nullable=False, index=True
+    )
+    old_state: Mapped[str | None] = mapped_column(String(50))
+    new_state: Mapped[str] = mapped_column(String(50), nullable=False)
+    score_total: Mapped[float | None] = mapped_column(Float)
+    was_alerted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<LifecycleEvent candidate_id={self.candidate_id} {self.old_state!r}→{self.new_state!r}>"
 
 
 class MaintenanceState(Base):

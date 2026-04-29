@@ -10,6 +10,7 @@ from app.models import (
     CandidateScoreHistory,
     CandidateValidation,
     Category,
+    LifecycleEvent,
     MaintenanceState,
     OpportunityCandidate,
     PainPoint,
@@ -66,7 +67,8 @@ async def test_models_can_create_each_v4_entity(session: AsyncSession) -> None:
     await session.flush()
 
     feedback = CandidateFeedback(
-        candidate_id=candidate.id, user_id="user1", brief_id=brief.id, rating=5
+        candidate_id=candidate.id, user_id=12345, brief_id=brief.id,
+        label="up", chat_id=99,
     )
     session.add(feedback)
     await session.commit()
@@ -99,11 +101,54 @@ async def test_candidate_unique_feedback_constraint(session: AsyncSession) -> No
     session.add(brief)
     await session.flush()
 
-    fb1 = CandidateFeedback(candidate_id=candidate.id, user_id="u1", brief_id=brief.id, rating=5)
+    fb1 = CandidateFeedback(
+        candidate_id=candidate.id, user_id=111, brief_id=brief.id, label="up", chat_id=1,
+    )
     session.add(fb1)
     await session.commit()
 
-    fb2 = CandidateFeedback(candidate_id=candidate.id, user_id="u1", brief_id=brief.id, rating=3)
+    fb2 = CandidateFeedback(
+        candidate_id=candidate.id, user_id=111, brief_id=brief.id, label="down", chat_id=1,
+    )
     session.add(fb2)
     with pytest.raises(IntegrityError):
         await session.commit()
+
+
+async def test_lifecycle_event_schema(session: AsyncSession) -> None:
+    candidate = OpportunityCandidate(problem_statement="test lc", specificity=3)
+    session.add(candidate)
+    await session.flush()
+
+    evt = LifecycleEvent(
+        candidate_id=candidate.id,
+        old_state="emerging",
+        new_state="hot",
+        score_total=78.5,
+        was_alerted=False,
+    )
+    session.add(evt)
+    await session.commit()
+
+    assert evt.id is not None
+    assert evt.new_state == "hot"
+    assert evt.was_alerted is False
+
+
+async def test_candidate_brief_evidence_json(session: AsyncSession) -> None:
+    candidate = OpportunityCandidate(problem_statement="evidence test", specificity=3)
+    session.add(candidate)
+    await session.flush()
+
+    brief = CandidateBrief(
+        candidate_id=candidate.id,
+        headline="Test",
+        summary="Summary",
+        evidence_json=[{"problem_text": "I hate X", "source_type": "reddit"}],
+    )
+    session.add(brief)
+    await session.commit()
+    await session.refresh(brief)
+
+    assert isinstance(brief.evidence_json, list)
+    assert brief.evidence_json[0]["source_type"] == "reddit"
