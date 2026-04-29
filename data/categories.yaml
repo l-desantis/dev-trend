@@ -1,0 +1,19 @@
+categories:
+  - slug: wellness
+    name: Wellness & Mental Health
+    description: Apps for habit, fitness, sleep, mental wellness, nutrition.
+  - slug: finance
+    name: Personal Finance
+    description: Budgeting, expense tracking, subscription management, net-worth.
+  - slug: devtools
+    name: Developer Tools
+    description: Code review, observability, CI/CD, IDEs, infrastructure tooling.
+  - slug: productivity
+    name: Productivity & Knowledge
+    description: PKM, async collaboration, time tracking, writing assistants.
+  - slug: creative
+    name: Creative & Media
+    description: AI-assisted image/audio/video generation and editing.
+  - slug: gaming
+    name: Gaming & Indie Games
+    description: Game engines, asset pipelines, indie publishing tools.
