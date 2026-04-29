@@ -1,5 +1,11 @@
 # DevTrend
 
+> **v4 in progress (Plan A: Foundation & Pipeline Core).**
+> Bot commands `/briefing`, `/niches`, `/niche`, `/trending` have been removed.
+> v4 commands (`/opportunities`, `/opportunity`, `/categories`, `/emerging`)
+> will be reintroduced in Plan B. See
+> `docs/superpowers/specs/2026-04-28-opportunity-discovery-pivot-design.md`.
+
 [![Python](https://img.shields.io/badge/Python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-pytest-green?style=flat-square)](tests/)
@@ -8,25 +14,16 @@
 
 Delivered through a **Telegram bot** with daily push notifications and on-demand commands.
 
-**Example output** (`/niche ai-habit-trackers`):
-```
-AI-Powered Habit Trackers — Score 84 ↑
-Strong momentum this week: 3 new repos crossing 50 stars, HN thread at 200+
-points, Reddit mentions up 40%. Growth slope: +0.6.
-Evidence: habit-tracker repo (github), "Show HN: AI streak coach" (hn).
-```
-
 ---
 
 ## Features
 
 - **Multi-source ingestion** — GitHub (stars & repos), Hacker News (Algolia), Reddit, and App Store (mock)
-- **Percentile-normalised scoring** — Growth, Demand, and Novelty dimensions combined into a 0–100 niche score
-- **LLM-generated briefs** — LangGraph agent graph (fetcher → retriever → forecaster → reporter → reviewer) produces structured opportunity briefs via a local Ollama model or Claude/OpenAI
-- **Telegram bot** — Seven slash commands with MarkdownV2 formatting, allowlist access control, and spike-alert push notifications
-- **Automated scheduling** — APScheduler jobs for ingestion (6 h / 12 h), daily scoring, brief generation, weekly pruning, and digest push
-- **Bulk backfill** — On first launch with an empty DB, up to 30 days of historical data is fetched automatically so scores are meaningful immediately
-- **Replay harness** — Seed synthetic history and replay the scoring loop day-by-day for evaluation without waiting for real ingestion
+- **v4 pain-point pipeline** — Five-stage async pipeline: LLM extraction → embedding → identity resolution (dedup) → HDBSCAN clustering → LLM labelling
+- **Opportunity candidates** — Clustered pain points become `OpportunityCandidate` rows with category, problem statement, audience, and specificity score
+- **Telegram bot** — Slash commands with MarkdownV2 formatting and allowlist access control
+- **Automated scheduling** — APScheduler jobs for ingestion (6 h / 12 h), pipeline (daily 03:30 UTC), weekly re-cluster, pruning, and digest push
+- **Bulk backfill** — On first launch with an empty DB, up to 30 days of historical data is fetched and processed automatically
 
 ---
 
@@ -82,37 +79,31 @@ On first launch with an empty database, a bulk backfill runs automatically (`BAC
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Telegram Bot (python-telegram-bot v20, async polling)       │
-│  Handlers: /start /briefing /niches /niche /trending /sources│
+│  Handlers: /start /help /sources                             │
 └────────────────────────┬────────────────────────────────────┘
-                         │ push (digest, spike alerts)
+                         │ push (digest)
 ┌────────────────────────▼────────────────────────────────────┐
 │  APScheduler (AsyncIOScheduler, same event loop)             │
 │  • Ingestion jobs: GitHub 6h, HN 6h, Reddit 12h, AppStore 7h│
-│  • Scoring job: daily 02:15 UTC                              │
-│  • Brief generation: daily 03:00 UTC                         │
+│  • v4 pipeline: daily 03:30 UTC                              │
+│  • Weekly re-cluster: Sunday 04:00 UTC                       │
 │  • Daily digest push: configurable (default 08:00 UTC)       │
 │  • Weekly pruning: Sunday 03:00 UTC                          │
-└──┬─────────────────────┬──────────────────────┬─────────────┘
-   │                     │                      │
-┌──▼──────────┐  ┌───────▼────────┐  ┌──────────▼──────────┐
-│  Connectors │  │  Signal        │  │  Agent Graph        │
-│  (httpx)    │  │  Aggregator    │  │  (LangGraph)        │
-│  GitHub     │  │  → NicheSignal │  │  fetcher → retriever│
-│  HN Algolia │  │  (daily aggs)  │  │  → forecaster       │
-│  Reddit     │  └───────┬────────┘  │  → reporter (LLM)   │
-│  AppStore   │          │           │  → reviewer          │
-│  (mock)     │  ┌───────▼────────┐  └──────────┬──────────┘
-└──┬──────────┘  │  Scorer        │             │
-   │             │  percentile    │             │
-   │             │  rank (30d)    │             │
-   │             └───────┬────────┘             │
-   │                     │                      │
-   └──────────┬──────────┘                      │
-              │                                 │
-┌─────────────▼─────────────────────────────────▼────────────┐
+└──┬──────────────────────────────────────────────────────────┘
+   │
+┌──▼──────────┐   ┌────────────────────────────────────────────┐
+│  Connectors │   │  v4 Pipeline                                │
+│  (httpx)    │──▶│  1. extract  — LLM → PainPoint rows         │
+│  GitHub     │   │  2. embed    — vectors for dedup/cluster     │
+│  HN Algolia │   │  3. identify — cosine dedup (≥0.82)          │
+│  Reddit     │   │  4. cluster  — HDBSCAN → OpportunityCandidate│
+│  AppStore   │   │  5. label    — LLM category + problem stmt   │
+│  (mock)     │   └────────────────────────────────────────────┘
+└─────────────┘
+┌─────────────────────────────────────────────────────────────┐
 │  SQLite (aiosqlite)                                          │
-│  source_items · niche_signals · niche_score_history          │
-│  opportunity_briefs · niches · maintenance_state             │
+│  categories · source_items · pain_points                     │
+│  opportunity_candidates                                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -120,13 +111,11 @@ On first launch with an empty database, a bulk backfill runs automatically (`BAC
 
 ## Bot Commands
 
+> **Plan A scope** — full opportunity commands (`/opportunities`, `/opportunity`, `/categories`, `/emerging`) arrive in Plan B.
+
 | Command | Description |
 |---|---|
 | `/start` | Welcome message and feature overview |
-| `/briefing` | Top-3 opportunity briefs ranked by score |
-| `/niches` | All tracked niches with current scores and trend arrows |
-| `/niche <slug>` | Full scorecard, evidence, and brief for one niche |
-| `/trending` | Top rising signals across all sources in the last 24 h |
 | `/sources` | Last ingestion timestamp and item count per source |
 | `/help` | Show all commands |
 
@@ -151,12 +140,33 @@ All settings are read from `.env` (see [`.env.example`](.env.example) for the fu
 
 ---
 
+## Upgrading to v4
+
+The v4 schema is incompatible with v3. Perform a fresh-DB cutover:
+
+```bash
+# 1. Stop the running app.
+
+# 2. Back up the v3 DB.
+mv devtrend.db devtrend.db.v3.bak
+
+# 3. Start the app on the v4 branch. Lifespan creates the v4 schema fresh.
+#    With BACKFILL_ON_EMPTY=true (default), the v4 pipeline backfills
+#    automatically on first start.
+uv run uvicorn app.main:app
+```
+
+Roll back by stopping the app and running `mv devtrend.db.v3.bak devtrend.db` on the v3 branch.
+
+> To verify the schema: `sqlite3 devtrend.db ".tables"` should show `categories`, `source_items`, `pain_points`, `opportunity_candidates` — and **not** `niches`, `niche_signals`.
+
+---
+
 ## Running Tests
 
 ```bash
 uv run pytest                          # full suite
-uv run pytest tests/test_scoring.py -v # specific module
-uv run pytest tests/test_pruning.py -v
+uv run pytest tests/pipeline/ -v       # v4 pipeline stages
 uv run pytest -q                       # quiet summary
 ```
 
