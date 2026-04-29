@@ -1,10 +1,7 @@
 # DevTrend
 
-> **v4 in progress (Plan A: Foundation & Pipeline Core).**
-> Bot commands `/briefing`, `/niches`, `/niche`, `/trending` have been removed.
-> v4 commands (`/opportunities`, `/opportunity`, `/categories`, `/emerging`)
-> will be reintroduced in Plan B. See
-> `docs/superpowers/specs/2026-04-28-opportunity-discovery-pivot-design.md`.
+> **v4.B — Scoring, lifecycle tracking, and Telegram UX are live.**
+> See `docs/superpowers/specs/2026-04-28-opportunity-discovery-pivot-design.md` for the full spec.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
@@ -21,9 +18,45 @@ Delivered through a **Telegram bot** with daily push notifications and on-demand
 - **Multi-source ingestion** — GitHub (stars & repos), Hacker News (Algolia), Reddit, and App Store (mock)
 - **v4 pain-point pipeline** — Five-stage async pipeline: LLM extraction → embedding → identity resolution (dedup) → HDBSCAN clustering → LLM labelling
 - **Opportunity candidates** — Clustered pain points become `OpportunityCandidate` rows with category, problem statement, audience, and specificity score
-- **Telegram bot** — Slash commands with MarkdownV2 formatting and allowlist access control
-- **Automated scheduling** — APScheduler jobs for ingestion (6 h / 12 h), pipeline (daily 03:30 UTC), weekly re-cluster, pruning, and digest push
+- **Scoring** — Five-dimension composite score (frequency, momentum, source diversity, GitHub validation, specificity) with percentile normalisation
+- **Lifecycle tracking** — Candidates move through `emerging → hot → saturated → dormant` states; transition alerts fire in Telegram immediately after scoring
+- **Daily digest** — Top-3 scored opportunities pushed to Telegram at 08:00 UTC with LLM-generated briefs and inline 👍/👎 feedback buttons
+- **v4 bot commands** — `/opportunities`, `/opportunity <id>`, `/categories`, `/category <slug>`, `/emerging`; inline feedback captured and stored
+- **Automated scheduling** — APScheduler jobs for ingestion (6 h / 12 h), pipeline (03:30 UTC), scoring + lifecycle (04:00 UTC), daily digest (08:00 UTC), weekly re-cluster, pruning
 - **Bulk backfill** — On first launch with an empty DB, up to 30 days of historical data is fetched and processed automatically
+
+### LLM provider selection
+
+Set `LLM_PROVIDER` and `EMBEDDING_PROVIDER` in `.env`:
+
+| Value | Description |
+|---|---|
+| `ollama` | Local Ollama instance (default; set `OLLAMA_BASE_URL` and `OLLAMA_MODEL`) |
+| `nim` | NVIDIA NIM API (set `NIM_API_KEY`, `NIM_LLM_MODEL`, `NIM_EMBEDDING_MODEL`) |
+| `mock` | No LLM calls — fixed fixtures; useful for development and CI |
+
+### Daily timeline
+
+| Time (UTC) | Job |
+|---|---|
+| 03:30 | Daily ingestion pipeline (extract → embed → cluster → label) |
+| 04:00 | Daily scoring (validation → score → lifecycle → alerts) |
+| 08:00 | Daily digest push (top-3 briefs sent to all allowed chats) |
+
+### 👍/👎 feedback
+
+Inline buttons on digest and alert messages record `CandidateFeedback` rows with `label='up'|'down'`. Feedback is stored but not yet used to re-rank candidates — that's a Plan C item.
+
+### Migrating an existing dev DB to v4.B
+
+Plan B reshapes `CandidateFeedback` (new columns, no migration). The fastest path:
+
+```bash
+rm devtrend.db
+uv run python -m app.main  # create_all rebuilds schema on startup
+```
+
+Then re-run the backfill: `uv run python -m app.ingestion.backfill`.
 
 ---
 

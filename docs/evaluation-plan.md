@@ -148,3 +148,52 @@ Niche                           Min    Max    End  Slope
 ```
 
 If the `End` score for the rising profile is below 70, or the slope label is not `↑ Rising`, investigate the Growth scoring path (`app/forecasting/scoring.py`).
+
+---
+
+## v4 Evaluation Criteria
+
+These checks apply specifically to the v4 opportunity-discovery pipeline introduced in Plan B.
+
+### 7. Extraction Precision
+
+**Prompt:** Are extracted PainPoints genuine unmet-need signals?
+
+- Randomly sample 50 `PainPoint` rows from `pain_points` table.
+- For each, read `problem_text` and judge: is it a real, specific user complaint that implies a missing product?
+- Log any that are noise (off-topic, too vague, or a positive statement).
+
+**Target:** ≥ 80 % are genuine unmet-need signals.
+
+---
+
+### 8. Cluster Coherence
+
+**Prompt:** Do the pain points within an `OpportunityCandidate` belong together?
+
+- For each candidate with ≥ 5 attached `PainPoint` rows, read all 5.
+- Rate "do these 5 problems belong to the same candidate?" on a 1–5 scale (1 = wildly mixed, 5 = tightly coherent).
+- Target average ≥ 4.0 across 20 sampled candidates.
+
+---
+
+### 9. Specificity Calibration
+
+**Prompt:** Is the LLM's specificity score calibrated?
+
+- Rate 20 randomly-selected `OpportunityCandidate` rows yourself on a 1–5 specificity scale.
+- Compare to the stored `specificity` field.
+- Compute Spearman rank correlation.
+
+**Target:** Spearman ρ ≥ 0.6.
+
+---
+
+### 10. Lifecycle Stability
+
+**Prompt:** Do lifecycle states stay stable, or do candidates bounce day-to-day?
+
+- After 7+ days of scoring data, count candidates that changed `lifecycle_state` more than once in 7 days.
+- Express as a percentage of all scored candidates.
+
+**Target:** < 5 % of candidates bounce states in a 7-day window. If above, consider adding hysteresis (require state to hold for 2 consecutive scoring runs before transitioning).

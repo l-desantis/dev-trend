@@ -63,7 +63,7 @@ The two operational additions worth flagging up front:
 
 ## Tasks
 
-### B-00 — Schema migrations (do this first)
+### B-00 — Schema migrations (do this first) ✅ DONE
 
 **Files:** `app/models.py`, `tests/test_models.py`
 
@@ -104,7 +104,7 @@ Plan A's models do not match what Plan B's tasks assume. Land all schema changes
 
 ---
 
-### B-01 — Stage 6: validation.py
+### B-01 — Stage 6: validation.py ✅ DONE
 
 **Files:** `app/pipeline/validation.py`, `tests/pipeline/test_validation.py`
 
@@ -155,7 +155,7 @@ async def run_validation(
 
 ---
 
-### B-02 — `app/scoring/dimensions.py`
+### B-02 — `app/scoring/dimensions.py` ✅ DONE
 
 **Files:** `app/scoring/dimensions.py`, `tests/scoring/test_dimensions.py`
 
@@ -198,7 +198,7 @@ def specificity_raw(candidate) -> float:
 
 ---
 
-### B-03 — Percentile normalisation
+### B-03 — Percentile normalisation ✅ DONE
 
 **Files:** `app/scoring/normalize.py`, `tests/scoring/test_normalize.py`
 
@@ -232,7 +232,7 @@ Validation dimension is NOT percentile-normalised — `validation_curve()` alrea
 
 ---
 
-### B-04 — Composite scorer
+### B-04 — Composite scorer ✅ DONE
 
 **Files:** `app/scoring/candidate_scorer.py`, `tests/scoring/test_candidate_scorer.py`
 
@@ -279,7 +279,7 @@ The specificity gate is enforced at scoring time: candidates with `specificity <
 
 ---
 
-### B-05 — Stage 8: lifecycle.py
+### B-05 — Stage 8: lifecycle.py ✅ DONE
 
 **Files:** `app/pipeline/lifecycle.py`, `tests/pipeline/test_lifecycle.py`
 
@@ -351,7 +351,7 @@ def derive_lifecycle_state(candidate, history):
 
 ---
 
-### B-06 — Stage 9: brief_generation.py
+### B-06 — Stage 9: brief_generation.py ✅ DONE
 
 **Files:** `app/pipeline/brief_generation.py`, `tests/pipeline/test_brief_generation.py`
 
@@ -396,7 +396,7 @@ The returned string becomes `CandidateBrief.summary`. For `headline`, take the f
 
 ---
 
-### B-07 — Daily scoring cron
+### B-07 — Daily scoring cron ✅ DONE
 
 **Files:** `app/ingestion/scheduler.py`, `app/config.py`, `tests/test_scheduler.py`
 
@@ -434,7 +434,7 @@ No new keys are introduced in B-07 — only the `scoring_cron_hour` default chan
 
 ---
 
-### B-08 — Daily digest cron
+### B-08 — Daily digest cron ✅ DONE
 
 **Files:** `app/ingestion/scheduler.py`, `app/bot/v4_notifications.py`, `tests/bot/test_v4_notifications.py`
 
@@ -487,7 +487,7 @@ Validation: 3 small repos, no major incumbent.
 
 ---
 
-### B-09 — Lifecycle alerts
+### B-09 — Lifecycle alerts ✅ DONE
 
 **Files:** `app/bot/v4_notifications.py`, `app/config.py`, `tests/bot/test_lifecycle_alerts.py`
 
@@ -540,7 +540,7 @@ max_alerts_per_day: int = 3   # already declared in Plan A — confirmed in use 
 
 ---
 
-### B-10 — `lifecycle_arrow` formatter helper
+### B-10 — `lifecycle_arrow` formatter helper ✅ DONE
 
 **Files:** `app/bot/formatter.py`, `tests/bot/test_formatter.py`
 
@@ -576,7 +576,7 @@ Total                  ·  78/100
 
 ---
 
-### B-11 — `/opportunities`
+### B-11 — `/opportunities` ✅ DONE
 
 **Files:** `app/bot/v4_handlers.py`, `tests/bot/test_v4_handlers.py`
 
@@ -600,7 +600,7 @@ Renders the same per-candidate block as the digest but in a list (no per-message
 
 ---
 
-### B-12 — `/opportunity <id>`
+### B-12 — `/opportunity <id>` ✅ DONE
 
 **Files:** `app/bot/v4_handlers.py`, `tests/bot/test_v4_handlers.py`
 
@@ -629,7 +629,7 @@ Renders:
 
 ---
 
-### B-13 — `/categories`
+### B-13 — `/categories` ✅ DONE
 
 **Files:** `app/bot/v4_handlers.py`, `tests/bot/test_v4_handlers.py`
 
@@ -656,7 +656,7 @@ SQL: `SELECT category_id, lifecycle_state, COUNT(*) FROM opportunity_candidates 
 
 ---
 
-### B-14 — `/category <slug>`
+### B-14 — `/category <slug>` ✅ DONE
 
 **Files:** `app/bot/v4_handlers.py`, `tests/bot/test_v4_handlers.py`
 
@@ -670,7 +670,7 @@ Top-N candidates in the named category. Slug must match `Category.slug` exactly.
 
 ---
 
-### B-15 — `/emerging`
+### B-15 — `/emerging` ✅ DONE
 
 **Files:** `app/bot/v4_handlers.py`, `tests/bot/test_v4_handlers.py`
 
@@ -685,7 +685,7 @@ Same render as `/opportunities` but filtered to `lifecycle_state='emerging'`. So
 
 ---
 
-### B-16 — Register handlers + command menu
+### B-16 — Register handlers + command menu ✅ DONE
 
 **Files:** `app/bot/bot.py`, `app/bot/handlers.py`, `app/main.py`, `tests/bot/test_command_menu.py`
 
@@ -714,7 +714,7 @@ Three things to wire, in three different files:
 
 ---
 
-### B-17 — Feedback callback handler
+### B-17 — Feedback callback handler ✅ DONE
 
 **Files:** `app/bot/feedback.py`, `tests/bot/test_feedback.py`
 
@@ -771,7 +771,7 @@ The brief_id-from-message extraction: we don't have a great hook for this. Pract
 
 ---
 
-### B-18 — Allowlist middleware: callback-query coverage test
+### B-18 — Allowlist middleware: callback-query coverage test ✅ DONE
 
 **Files:** `tests/bot/test_middleware.py` (only)
 
@@ -787,7 +787,7 @@ This task only adds tests to lock that behaviour in:
 
 ---
 
-### B-19 — End-to-end push flow test
+### B-19 — End-to-end push flow test ✅ DONE
 
 **Files:** `tests/bot/test_v4_e2e_push.py`
 
@@ -802,7 +802,7 @@ A single integration test that:
 
 ---
 
-### B-20 — Specificity-gate enforcement audit
+### B-20 — Specificity-gate enforcement audit ✅ DONE
 
 **Files:** any handler touching candidates
 
@@ -816,13 +816,13 @@ Add a config-dispatched test:
 
 ---
 
-### B-21 — Documentation + cleanup
+### B-21 — Documentation + cleanup ✅ DONE (see note)
 
 **Files:** `README.md`, `KANBAN.md`, `docs/evaluation-plan.md`, `pyproject.toml`, `app/config.py`, `.env.example`
 
 **`pyproject.toml`:** bump version `3.0.0 → 4.0.0` (Plan A leftover — was flagged but not landed).
 
-**`app/config.py` + `.env.example`:** delete the dead v3 config keys that are no longer referenced anywhere in the codebase after Plan A:
+**`app/config.py` + `.env.example`:** delete the dead v3 config keys that are no longer referenced anywhere in the codebase after Plan A (⚠️ deferred to Plan C — `app/forecasting/scoring.py` still references `growth_weight`, `demand_weight`, `novelty_weight`, `scoring_*_window_days` and test files reference `spike_alert_threshold`; safe to remove only after forecasting code is decommissioned):
 - `growth_weight`, `demand_weight`, `novelty_weight`
 - `scoring_growth_window_days`, `scoring_novelty_max_age_days`, `scoring_normalization_window_days`
 - `briefing_top_n`, `trending_top_n`, `trending_window_hours`

@@ -129,13 +129,21 @@
 
 ---
 
-## v4 — Opportunity Discovery (in progress)
+## v4 — Opportunity Discovery
 
-| ID | Title | Plan |
-|---|---|---|
-| V4A-* | Foundation & Pipeline Core | docs/superpowers/plans/2026-04-28-v4a-foundation-and-pipeline-core.md |
-| V4B-* | Scoring, Lifecycle, Bot UX, Feedback | docs/superpowers/plans/2026-04-28-v4b-scoring-lifecycle-bot-ux.md |
-| V4C-* | Play Store Connector & v3 Decommissioning | docs/superpowers/plans/2026-04-28-v4c-playstore-and-decommissioning.md |
+| ID | Title | Status | Plan |
+|---|---|---|---|
+| V4A-* | Foundation & Pipeline Core | ✅ Done | docs/superpowers/plans/2026-04-28-v4a-foundation-and-pipeline-core.md |
+| V4B-* | Scoring, Lifecycle, Bot UX, Feedback | ✅ Done | docs/superpowers/plans/2026-04-28-v4b-scoring-lifecycle-bot-ux.md |
+| V4C-* | Play Store Connector & v3 Decommissioning | Backlog | docs/superpowers/plans/2026-04-28-v4c-playstore-and-decommissioning.md |
+
+### v4.C Backlog highlights
+- Real Play Store connector (reviews + install proxies)
+- Show HN role tagging on HN connector (`role='validation'`)
+- Hysteresis for lifecycle state transitions (require 2 consecutive runs)
+- Lifecycle event pruning job (> 30 days)
+- Drop remaining v3 forecasting code (`app/forecasting/`) once migration is complete
+- Remove dead v3 config keys (`growth_weight`, `demand_weight`, etc.) once `app/forecasting/scoring.py` is decommissioned
 
 ---
 
