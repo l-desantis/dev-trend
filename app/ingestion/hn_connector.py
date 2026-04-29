@@ -4,6 +4,16 @@ from app.config import get_settings
 from app.ingestion.base import BaseConnector, NormalizedItem
 
 
+def _hn_role(hit: dict) -> str:
+    title = (hit.get("title") or "").strip()
+    tags = hit.get("_tags", [])
+    if title.startswith("Show HN:"):
+        return "validation"
+    if title.startswith("Ask HN:") or "comment" in tags:
+        return "extraction"
+    return "ignored"
+
+
 class HNConnector(BaseConnector):
     source_type = "hn"
     _BASE = "https://hn.algolia.com/api/v1/search_by_date"
@@ -71,6 +81,8 @@ class HNConnector(BaseConnector):
                     "points": hit.get("points"),
                     "num_comments": hit.get("num_comments"),
                     "author": hit.get("author"),
+                    "_tags": hit.get("_tags", []),
                 },
+                role=_hn_role(hit),
             ))
         return items

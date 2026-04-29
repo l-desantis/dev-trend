@@ -6,7 +6,10 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.bot.formatter import bold, format_score, md_escape, trend_arrow, truncate
 from app.db import get_session
-from app.models import Niche, OpportunityBrief
+# TODO(Plan C): Niche and OpportunityBrief are v3 ORM models deleted from app/models.py.
+# This module is not reachable in production (test_notifications.py is skipped).
+# Decommission and rewrite against OpportunityCandidate in Plan C.
+from app.models import Niche, OpportunityBrief  # type: ignore[attr-defined]
 
 
 async def build_daily_digest() -> str | None:

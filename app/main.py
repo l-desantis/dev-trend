@@ -12,13 +12,6 @@ from app.api.routes_health import router as health_router
 from app.config import get_settings
 from app.db import get_session, init_db
 
-from app.ingestion.appstore_mock_connector import AppStoreMockConnector
-from app.ingestion.base import ConnectorRunRegistry
-from app.ingestion.github_connector import GithubConnector
-from app.ingestion.hn_connector import HNConnector
-from app.ingestion.reddit_connector import RedditConnector
-from app.ingestion.scheduler import build_scheduler
-from app.features.niche_builder import NicheMatcher, sync_niches_from_yaml
 
 def _configure_logging() -> None:
     settings = get_settings()
@@ -46,18 +39,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     log.info("Database initialised", component="main")
 
-    count = await sync_niches_from_yaml(Path("data/niches.yaml"))
-    log.info("Niches synced", component="main", count=count)
+    from app.db_helpers.categories import sync_categories_from_yaml
+    async with get_session() as session:
+        await sync_categories_from_yaml(session, path=Path("data/categories.yaml"))
+    log.info("Categories synced", component="main")
+
+    from app.ingestion.base import ConnectorRunRegistry
+    from app.ingestion.github_connector import GithubConnector
+    from app.ingestion.hn_connector import HNConnector
+    from app.ingestion.reddit_connector import RedditConnector
 
     http_client = httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s)
     registry = ConnectorRunRegistry()
-    matcher = await NicheMatcher.from_db()
 
     connectors = [
-        GithubConnector(http_client, matcher, registry),
-        HNConnector(http_client, matcher, registry),
-        RedditConnector(http_client, matcher, registry),
-        AppStoreMockConnector(http_client, matcher, registry),
+        GithubConnector(http_client, registry),
+        HNConnector(http_client, registry),
+        RedditConnector(http_client, registry),
     ]
 
     bot_app = None
@@ -69,13 +67,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await bot_app.initialize()
         await bot_app.start()
         await bot_app.bot.set_my_commands([
-            BotCommand("start",    "Welcome message and feature overview"),
-            BotCommand("briefing", "Top 3 opportunity briefs ranked by score"),
-            BotCommand("niches",   "List all tracked niches with scores"),
-            BotCommand("niche",    "Full scorecard for a niche — /niche <slug>"),
-            BotCommand("trending", "Top niches by 24h mention-count delta"),
-            BotCommand("sources",  "Last ingestion status per source"),
-            BotCommand("help",     "Show all available commands"),
+            BotCommand("start",   "Welcome message and feature overview"),
+            BotCommand("sources", "Last ingestion status per source"),
+            BotCommand("help",    "Show all available commands"),
         ])
         if bot_app.updater is not None:
             await bot_app.updater.start_polling()
@@ -93,20 +87,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if db_empty:
             log.info("db_empty_starting_backfill", component="main")
             from app.ingestion.backfill import bulk_backfill
-            from app.llm.mock_adapter import MockLLMAdapter
-            from app.llm.ollama_adapter import OllamaAdapter
-            _adapter = (
-                OllamaAdapter(base_url=settings.ollama_base_url, model=settings.ollama_model)
-                if settings.llm_provider == "ollama"
-                else MockLLMAdapter()
-            )
+            from app.llm.factory import make_embedding_adapter, make_llm_adapter
+            _llm = make_llm_adapter(settings)
+            _embedder = make_embedding_adapter(settings)
             _report = await bulk_backfill(
-                connectors, _adapter, history_days=settings.backfill_history_days
+                connectors, _llm, _embedder, settings,
+                history_days=settings.backfill_history_days,
             )
             log.info("bulk_backfill_complete", component="main", **_report.to_dict())
         else:
             log.info("db_not_empty_skip_backfill", component="main")
 
+    from app.ingestion.scheduler import build_scheduler
     scheduler = build_scheduler(
         connectors, registry, settings,
         bot=(bot_app.bot if bot_app else None),

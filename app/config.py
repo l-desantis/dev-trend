@@ -3,6 +3,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from typing import Literal
+
 from pydantic import field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDict
@@ -103,12 +105,35 @@ class Settings(BaseSettings):
     scoring_cron_minute: int = 15
 
     # Agent / brief generation
-    llm_provider: str = "ollama"          # "ollama" | "mock"
+    llm_provider: Literal["ollama", "nim", "mock"] = "ollama"
+    embedding_provider: Literal["ollama", "nim", "mock"] = "ollama"
     brief_cron_hour: int = 3
     brief_cron_minute: int = 0
     brief_per_niche_timeout_s: float = 90.0
     brief_max_evidence_items: int = 5
     brief_min_summary_chars: int = 50
+
+    # NIM (NVIDIA)
+    nim_api_key: str = ""
+    nim_llm_model: str = "meta/llama-3.1-70b-instruct"
+    nim_embedding_model: str = "nvidia/nv-embedqa-e5-v5"
+
+    # v4 pipeline settings
+    extraction_batch_size: int = 20
+    embedding_batch_size: int = 64
+    identity_resolution_threshold: float = 0.82
+    clustering_min_cluster_size: int = 3
+    specificity_gate: int = 2
+    max_alerts_per_day: int = 3
+
+    pipeline_cron_hour: int = 3
+    pipeline_cron_minute: int = 30
+
+    weekly_recluster_cron_hour: int = 4
+    weekly_recluster_cron_day: str = "sun"
+
+    playstore_top_n_per_category: int = 50
+    playstore_reviews_per_app: int = 200
 
     # Bulk backfill (runs once on startup when DB is empty)
     backfill_on_empty: bool = True

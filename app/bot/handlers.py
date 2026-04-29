@@ -1,27 +1,26 @@
+"""Bot command handlers — v4 trimmed version.
+
+Only /start, /help, /sources are active. v3 commands (/briefing, /niches,
+/niche, /trending) have been removed. v4 commands arrive in Plan B.
+"""
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-from app.config import get_settings
 
 _START_TEXT = (
     "👋 *Welcome to DevTrend\\!*\n\n"
-    "I monitor developer\\-facing market signals across GitHub, Hacker News, Reddit, "
-    "and app stores — then synthesise them into structured opportunity briefs\\.\n\n"
-    "Use /help to see all available commands\\."
+    "I monitor developer\\-facing market signals across GitHub, Hacker News, and Reddit — "
+    "then synthesise them into structured opportunity briefs\\.\n\n"
+    "v4 opportunity commands are coming soon\\. Use /help to see available commands\\."
 )
 
 _HELP_TEXT = (
     "/start — Welcome message and feature overview\n"
-    "/briefing — On\\-demand top 3 opportunity briefs\n"
-    "/niches — List all tracked niches with current scores\n"
-    "/niche \\<slug\\> — Full scorecard and evidence for a specific niche\n"
-    "/trending — Top rising signals across all sources in last 24h\n"
     "/sources — Last ingestion timestamp and status per source\n"
-    "/help — Show this message"
+    "/help — Show this message\n\n"
+    "_v4 commands \\(`/opportunities`, `/opportunity`, `/categories`, `/emerging`\\) "
+    "will be available in the next release\\._"
 )
-
-
-_COMING_SOON = "⚙️ This command is not yet available. Check back soon."
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -32,254 +31,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_message:
         await update.effective_message.reply_text(_HELP_TEXT, parse_mode="MarkdownV2")
-
-
-async def briefing_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Return top-N latest opportunity briefs, ranked by score_total."""
-    if not update.effective_message:
-        return
-    from sqlalchemy import select
-    from app.db import get_session
-    from app.models import Niche, OpportunityBrief
-    from app.bot.formatter import bold, format_score, md_escape, trend_arrow, truncate
-
-    settings = get_settings()
-    async with get_session() as session:
-        result = await session.execute(
-            select(OpportunityBrief, Niche)
-            .join(Niche, Niche.id == OpportunityBrief.niche_id)
-            .order_by(OpportunityBrief.score_total.desc())
-            .limit(settings.briefing_top_n)
-        )
-        rows = result.all()
-
-    if not rows:
-        await update.effective_message.reply_text(
-            md_escape("No briefs yet — the agent will run at 03:00 UTC."),
-            parse_mode="MarkdownV2",
-        )
-        return
-
-    lines = [bold("DevTrend Briefing")]
-    for i, (brief, niche) in enumerate(rows, start=1):
-        arrow = trend_arrow(brief.forecast_label or "Stable")
-        lines.append(
-            f"\n{i}\\. {bold(niche.name)} "
-            f"\\| {bold(format_score(brief.score_total or 0.0))} {arrow}\n"
-            f"{md_escape(brief.summary or '')}"
-        )
-
-    text = truncate("\n".join(lines), settings.telegram_max_message_chars)
-    await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
-
-
-async def niches_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_message:
-        return
-    from sqlalchemy import select, func
-    from app.db import get_session
-    from app.models import Niche, NicheScoreHistory, OpportunityBrief
-    from app.bot.formatter import bold, format_score, md_escape, trend_arrow, truncate
-
-    settings = get_settings()
-
-    async with get_session() as session:
-        latest_score = (
-            select(
-                NicheScoreHistory.niche_id,
-                func.max(NicheScoreHistory.scored_at).label("max_at"),
-            )
-            .group_by(NicheScoreHistory.niche_id)
-            .subquery()
-        )
-        score_rows = await session.execute(
-            select(NicheScoreHistory)
-            .join(
-                latest_score,
-                (NicheScoreHistory.niche_id == latest_score.c.niche_id)
-                & (NicheScoreHistory.scored_at == latest_score.c.max_at),
-            )
-        )
-        scores = {r[0].niche_id: r[0].score_total for r in score_rows.all()}
-
-        latest_brief = (
-            select(
-                OpportunityBrief.niche_id,
-                func.max(OpportunityBrief.generated_at).label("max_at"),
-            )
-            .group_by(OpportunityBrief.niche_id)
-            .subquery()
-        )
-        brief_rows = await session.execute(
-            select(OpportunityBrief)
-            .join(
-                latest_brief,
-                (OpportunityBrief.niche_id == latest_brief.c.niche_id)
-                & (OpportunityBrief.generated_at == latest_brief.c.max_at),
-            )
-        )
-        labels = {r[0].niche_id: r[0].forecast_label for r in brief_rows.all()}
-
-        niches = (await session.execute(select(Niche))).scalars().all()
-
-    ranked = sorted(niches, key=lambda n: scores.get(n.id, 0.0), reverse=True)
-
-    if not ranked:
-        await update.effective_message.reply_text(
-            md_escape("No niches loaded."), parse_mode="MarkdownV2"
-        )
-        return
-
-    lines = [bold("Tracked Niches")]
-    for n in ranked:
-        score = scores.get(n.id, 0.0)
-        arrow = trend_arrow(labels.get(n.id, "Stable"))
-        lines.append(
-            f"{arrow} {bold(n.name)} \\| {bold(format_score(score))} "
-            f"\\(`/niche {md_escape(n.slug)}`\\)"
-        )
-
-    text = truncate("\n".join(lines), settings.telegram_max_message_chars)
-    await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
-
-
-async def niche_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_message:
-        return
-    from sqlalchemy import select
-    from app.db import get_session
-    from app.models import Niche, OpportunityBrief
-    from app.bot.formatter import bold, format_score, md_escape, trend_arrow, truncate
-
-    settings = get_settings()
-    args = context.args or []
-    if not args:
-        await update.effective_message.reply_text(
-            md_escape("Usage: /niche <slug>  (try /niches for the list)"),
-            parse_mode="MarkdownV2",
-        )
-        return
-
-    slug = args[0].strip().lower()
-
-    async with get_session() as session:
-        niche = (await session.execute(
-            select(Niche).where(Niche.slug == slug)
-        )).scalar_one_or_none()
-
-        if niche is None:
-            await update.effective_message.reply_text(
-                md_escape(f"Niche '{slug}' not found."),
-                parse_mode="MarkdownV2",
-            )
-            return
-
-        brief = (await session.execute(
-            select(OpportunityBrief)
-            .where(OpportunityBrief.niche_id == niche.id)
-            .order_by(OpportunityBrief.generated_at.desc())
-            .limit(1)
-        )).scalar_one_or_none()
-
-    if brief is None:
-        await update.effective_message.reply_text(
-            f"{bold(niche.name)}\n{md_escape('No brief yet.')}",
-            parse_mode="MarkdownV2",
-        )
-        return
-
-    breakdown = brief.score_breakdown_json or {}
-    arrow = trend_arrow(brief.forecast_label or "Stable")
-    lines = [
-        f"{bold(niche.name)} {arrow}",
-        f"{bold('Score')}: {bold(format_score(brief.score_total or 0.0))}",
-        f"  Growth: {format_score(breakdown.get('growth', 0))}",
-        f"  Demand: {format_score(breakdown.get('demand', 0))}",
-        f"  Novelty: {format_score(breakdown.get('novelty', 0))}",
-        "",
-        md_escape(brief.summary or ""),
-    ]
-
-    evidence = brief.evidence_json or []
-    if evidence:
-        lines.append("")
-        lines.append(bold("Evidence"))
-        for e in evidence[:5]:
-            title = md_escape(e.get("title", "(untitled)"))
-            url = md_escape(e.get("url", ""))
-            stype = md_escape(e.get("source_type", "?"))
-            lines.append(f"\\- \\[{stype}\\] {title} {url}")
-
-    text = truncate(
-        "\n".join(lines),
-        settings.telegram_max_message_chars,
-        footer="…\n_\\(truncated\\)_",
-    )
-    await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
-
-
-async def trending_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_message:
-        return
-    from datetime import datetime, timedelta, timezone
-    from sqlalchemy import select, func
-    from app.db import get_session
-    from app.models import Niche, SourceItem
-    from app.bot.formatter import bold, md_escape, truncate
-
-    settings = get_settings()
-    now = datetime.now(timezone.utc)
-    window = timedelta(hours=settings.trending_window_hours)
-    cur_start, prior_start = now - window, now - 2 * window
-
-    async with get_session() as session:
-        cur: dict[int | None, int] = {
-            row[0]: row[1] for row in (await session.execute(
-                select(SourceItem.niche_id, func.count(SourceItem.id))
-                .where(SourceItem.ingested_at >= cur_start)
-                .where(SourceItem.niche_id.is_not(None))
-                .group_by(SourceItem.niche_id)
-            )).all()
-        }
-        prior: dict[int | None, int] = {
-            row[0]: row[1] for row in (await session.execute(
-                select(SourceItem.niche_id, func.count(SourceItem.id))
-                .where(SourceItem.ingested_at >= prior_start)
-                .where(SourceItem.ingested_at < cur_start)
-                .where(SourceItem.niche_id.is_not(None))
-                .group_by(SourceItem.niche_id)
-            )).all()
-        }
-        niches = {n.id: n for n in
-                  (await session.execute(select(Niche))).scalars().all()}
-
-    ranked = []
-    for nid, count in cur.items():
-        if count == 0 or nid not in niches:
-            continue
-        delta = count - prior.get(nid, 0)
-        ranked.append((delta, count, niches[nid]))
-    ranked.sort(key=lambda r: r[0], reverse=True)
-    ranked = ranked[: settings.trending_top_n]
-
-    if not ranked:
-        await update.effective_message.reply_text(
-            md_escape("No trending signals in the last 24h."),
-            parse_mode="MarkdownV2",
-        )
-        return
-
-    lines = [bold(f"Trending — last {settings.trending_window_hours}h")]
-    for delta, count, niche in ranked:
-        sign = "+" if delta >= 0 else ""
-        lines.append(
-            f"{bold(niche.name)} \\| "
-            f"{md_escape(str(count))} mentions "
-            f"\\({md_escape(sign + str(delta))} vs prior\\)"
-        )
-
-    text = truncate("\n".join(lines), settings.telegram_max_message_chars)
-    await update.effective_message.reply_text(text, parse_mode="MarkdownV2")
 
 
 async def sources_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -294,7 +45,7 @@ async def sources_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     from app.bot.formatter import md_escape
 
     registry: ConnectorRunRegistry | None = context.application.bot_data.get("run_registry")
-    source_types = ["github", "hn", "reddit", "appstore"]
+    source_types = ["github", "hn", "reddit"]
     lines = ["*Sources — last ingestion status*\n"]
 
     for st in source_types:
@@ -327,8 +78,4 @@ async def sources_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 def register_command_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("help", help_handler))
-    application.add_handler(CommandHandler("briefing", briefing_handler))
-    application.add_handler(CommandHandler("niches", niches_handler))
-    application.add_handler(CommandHandler("niche", niche_handler))
-    application.add_handler(CommandHandler("trending", trending_handler))
     application.add_handler(CommandHandler("sources", sources_handler))

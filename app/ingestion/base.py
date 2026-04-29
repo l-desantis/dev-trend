@@ -9,7 +9,6 @@ import httpx
 import structlog
 
 from app.db import get_session
-from app.features.niche_builder import NicheMatcher
 from app.models import SourceItem
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -26,6 +25,7 @@ class NormalizedItem:
     url: str | None
     created_at: datetime | None
     metadata: dict | None = None
+    role: str = "extraction"
 
 
 @dataclass
@@ -74,11 +74,9 @@ class BaseConnector(ABC):
     def __init__(
         self,
         client: httpx.AsyncClient,
-        matcher: NicheMatcher,
         registry: ConnectorRunRegistry,
     ) -> None:
         self.client = client
-        self.matcher = matcher
         self.registry = registry
         self.log = structlog.get_logger(self.__class__.__name__)
 
@@ -102,8 +100,9 @@ class BaseConnector(ABC):
                     "body": item.body,
                     "url": item.url,
                     "created_at": item.created_at,
-                    "niche_id": self.matcher.match(item.title, item.body),
                     "metadata_json": item.metadata,
+                    "role": item.role,
+                    "extraction_state": "pending",
                 }
                 for item in items
             ]

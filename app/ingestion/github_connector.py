@@ -73,5 +73,6 @@ class GithubConnector(BaseConnector):
                     "topics": repo.get("topics", []),
                     "pushed_at": repo.get("pushed_at"),
                 },
+                role="validation",
             ))
         return items

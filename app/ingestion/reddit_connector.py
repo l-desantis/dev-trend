@@ -108,5 +108,6 @@ class RedditConnector(BaseConnector):
                     "num_comments": d.get("num_comments"),
                     "author": d.get("author"),
                 },
+                role="extraction",
             ))
         return items
