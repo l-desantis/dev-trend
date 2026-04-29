@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     scoring_growth_window_days: int = 7
     scoring_novelty_max_age_days: int = 30
     scoring_normalization_window_days: int = 30
-    scoring_cron_hour: int = 2
+    scoring_cron_hour: int = 4
     scoring_cron_minute: int = 15
 
     # Agent / brief generation
