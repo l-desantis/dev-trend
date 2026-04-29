@@ -14,7 +14,7 @@ def _settings() -> Settings:
     return Settings(_env_file=None)  # type: ignore[call-arg]
 
 
-def test_scheduler_registers_v4_jobs() -> None:
+def test_scheduler_registers_v4b_jobs() -> None:
     client = httpx.AsyncClient()
     registry = ConnectorRunRegistry()
     connectors = [
@@ -31,8 +31,9 @@ def test_scheduler_registers_v4_jobs() -> None:
     assert "github_ingestion" in job_ids
     assert "hn_ingestion" in job_ids
     assert "reddit_ingestion" in job_ids
+    # v4.B jobs
+    assert "daily_scoring" in job_ids
+    assert "daily_digest" in job_ids
 
     # v3 jobs must be gone
-    assert "daily_scoring" not in job_ids
     assert "daily_brief_generation" not in job_ids
-    assert "daily_digest" not in job_ids

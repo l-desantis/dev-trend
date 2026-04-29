@@ -86,9 +86,76 @@ def build_scheduler(
         misfire_grace_time=3600,
     )
 
+    async def _scoring_job() -> None:
+        from datetime import UTC, datetime
+        import httpx
+        from app.db import _get_session_factory
+        from app.pipeline.validation import run_validation
+        from app.scoring.candidate_scorer import score_all_candidates
+        from app.pipeline.lifecycle import update_lifecycle_states_and_emit_transitions
+        from app.bot.v4_notifications import emit_lifecycle_alerts
+
+        session_factory = _get_session_factory()
+        github_client = httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s)
+        try:
+            async with session_factory() as session:
+                await run_validation(session, github_client)
+            async with session_factory() as session:
+                as_of = datetime.now(UTC)
+                await score_all_candidates(session, as_of=as_of)
+            async with session_factory() as session:
+                transitions = await update_lifecycle_states_and_emit_transitions(
+                    session, as_of=datetime.now(UTC)
+                )
+            if bot is not None:
+                async with session_factory() as session:
+                    await emit_lifecycle_alerts(
+                        transitions, bot, session,
+                        settings.telegram_allowed_chat_ids, settings
+                    )
+        except Exception as exc:
+            log.error("Daily scoring job failed", component="scheduler", error=str(exc))
+        finally:
+            await github_client.aclose()
+
+    scheduler.add_job(
+        _scoring_job,
+        CronTrigger(hour=settings.scoring_cron_hour, minute=settings.scoring_cron_minute),
+        id="daily_scoring",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+
+    async def _digest_job() -> None:
+        from app.db import _get_session_factory
+        from app.llm.factory import make_llm_adapter
+        from app.bot.v4_notifications import run_digest_job
+
+        if bot is None:
+            return
+        session_factory = _get_session_factory()
+        llm = make_llm_adapter(settings)
+        try:
+            await run_digest_job(session_factory, bot, llm, settings)
+        except Exception as exc:
+            log.error("Daily digest job failed", component="scheduler", error=str(exc))
+
+    scheduler.add_job(
+        _digest_job,
+        CronTrigger(hour=settings.digest_cron_hour, minute=settings.digest_cron_minute),
+        id="daily_digest",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+
     log.info(
         "Scheduler built",
         component="scheduler",
-        jobs=["github_ingestion", "hn_ingestion", "reddit_ingestion", "daily_pipeline", "weekly_pruning"],
+        jobs=[
+            "github_ingestion", "hn_ingestion", "reddit_ingestion",
+            "daily_pipeline", "daily_scoring", "daily_digest", "weekly_pruning",
+        ],
     )
     return scheduler
