@@ -1,8 +1,4 @@
-"""Bot command handlers — v4 trimmed version.
-
-Only /start, /help, /sources are active. v3 commands (/briefing, /niches,
-/niche, /trending) have been removed. v4 commands arrive in Plan B.
-"""
+"""Bot command handlers."""
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -11,15 +7,18 @@ _START_TEXT = (
     "👋 *Welcome to DevTrend\\!*\n\n"
     "I monitor developer\\-facing market signals across GitHub, Hacker News, and Reddit — "
     "then synthesise them into structured opportunity briefs\\.\n\n"
-    "v4 opportunity commands are coming soon\\. Use /help to see available commands\\."
+    "Use /help to see available commands\\."
 )
 
 _HELP_TEXT = (
     "/start — Welcome message and feature overview\n"
-    "/sources — Last ingestion timestamp and status per source\n"
-    "/help — Show this message\n\n"
-    "_v4 commands \\(`/opportunities`, `/opportunity`, `/categories`, `/emerging`\\) "
-    "will be available in the next release\\._"
+    "/opportunities — Top opportunities right now\n"
+    "/opportunity — Full scorecard for an opportunity\n"
+    "/categories — Overview by category\n"
+    "/category — Filter by category slug\n"
+    "/emerging — Newly\\-discovered opportunities\n"
+    "/sources — Last ingestion status per source\n"
+    "/help — Show this message\n"
 )
 
 
@@ -76,6 +75,22 @@ async def sources_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 def register_command_handlers(application: Application) -> None:
+    from app.bot.v4_handlers import (
+        cmd_categories,
+        cmd_category,
+        cmd_emerging,
+        cmd_opportunities,
+        cmd_opportunity,
+    )
+    from app.bot.feedback import cmd_feedback_callback
+    from telegram.ext import CallbackQueryHandler
+
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("help", help_handler))
     application.add_handler(CommandHandler("sources", sources_handler))
+    application.add_handler(CommandHandler("opportunities", cmd_opportunities))
+    application.add_handler(CommandHandler("opportunity", cmd_opportunity))
+    application.add_handler(CommandHandler("categories", cmd_categories))
+    application.add_handler(CommandHandler("category", cmd_category))
+    application.add_handler(CommandHandler("emerging", cmd_emerging))
+    application.add_handler(CallbackQueryHandler(cmd_feedback_callback, pattern=r"^fb:"))

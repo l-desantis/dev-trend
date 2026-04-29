@@ -94,11 +94,13 @@ class TestHelpHandler:
         text = update.effective_message.reply_text.call_args.args[0]
         assert "/help" in text
 
-    async def test_reply_mentions_v4_coming_soon(self, mock_context: MagicMock) -> None:
+    async def test_reply_lists_v4_commands(self, mock_context: MagicMock) -> None:
         update = _make_update(chat_id=12345)
         await help_handler(update, mock_context)
         text = update.effective_message.reply_text.call_args.args[0]
-        assert "next release" in text or "v4" in text.lower()
+        assert "/opportunities" in text
+        assert "/emerging" in text
+        assert "coming soon" not in text.lower()
 
     async def test_no_error_when_no_message(self, mock_context: MagicMock) -> None:
         update = _make_update(chat_id=12345)
@@ -150,6 +152,11 @@ class TestBotCommandMenuRegistered:
         assert "start" in registered
         assert "help" in registered
         assert "sources" in registered
+        assert "opportunities" in registered
+        assert "opportunity" in registered
+        assert "categories" in registered
+        assert "category" in registered
+        assert "emerging" in registered
         # v3 commands must be absent
         assert "briefing" not in registered
         assert "niches" not in registered

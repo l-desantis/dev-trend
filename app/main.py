@@ -67,9 +67,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await bot_app.initialize()
         await bot_app.start()
         await bot_app.bot.set_my_commands([
-            BotCommand("start",   "Welcome message and feature overview"),
-            BotCommand("sources", "Last ingestion status per source"),
-            BotCommand("help",    "Show all available commands"),
+            BotCommand("start",         "Welcome + commands"),
+            BotCommand("help",          "Show command list"),
+            BotCommand("opportunities", "Top opportunities right now"),
+            BotCommand("opportunity",   "Full scorecard for an opportunity"),
+            BotCommand("categories",    "Overview by category"),
+            BotCommand("category",      "Filter by category slug"),
+            BotCommand("emerging",      "Newly-discovered opportunities"),
+            BotCommand("sources",       "Last ingestion status per source"),
         ])
         if bot_app.updater is not None:
             await bot_app.updater.start_polling()
