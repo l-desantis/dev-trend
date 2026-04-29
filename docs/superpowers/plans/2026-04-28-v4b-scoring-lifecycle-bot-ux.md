@@ -43,18 +43,66 @@ The two operational additions worth flagging up front:
 - Tests under `tests/scoring/`, `tests/pipeline/test_validation.py`, `tests/pipeline/test_lifecycle.py`, `tests/pipeline/test_brief_generation.py`, `tests/bot/test_v4_handlers.py`, `tests/bot/test_feedback.py`
 
 **Modified:**
-- `app/bot/handlers.py` — wire in v4 handlers (the file may eventually be split; for Plan B keep it as a thin re-export layer)
+- `app/bot/handlers.py` — refresh `_HELP_TEXT` to advertise the v4 commands (it currently says "coming soon")
+- `app/bot/bot.py` — register v4 command + callback handlers (single entry point used by `app/main.py`)
 - `app/bot/formatter.py` — add `lifecycle_arrow`, `score_breakdown_block`
-- `app/bot/middleware.py` — extend allowlist to `CallbackQuery` updates (currently only checks `Message`)
-- `app/ingestion/scheduler.py` — add daily scoring + digest crons
-- `app/main.py` lifespan — register feedback callback handler with the bot dispatcher
-- `app/config.py` + `.env.example` — add new keys (B-09)
+- `app/main.py` — update `set_my_commands(...)` to the v4 set (this is where the menu is registered today, not `bot.py`)
+- `app/ingestion/scheduler.py` — add daily scoring + digest crons; `bot=None` parameter is already present
+- `app/config.py` + `.env.example` — bump existing `scoring_cron_hour` default `2 → 4`; remove dead v3 scoring keys (`growth_weight`, `demand_weight`, `novelty_weight`, `scoring_*_window_days`, `briefing_top_n`, `trending_*`, `spike_alert_threshold`) — see B-21
+- `app/models.py` — schema migrations required by Plan B (do NOT defer):
+  - Add `LifecycleEvent` table (B-05)
+  - Add `evidence_json: JSON` column to `CandidateBrief` (B-06)
+  - Reshape `CandidateFeedback`: drop `rating`/`submitted_at`, add `label: String(10)` / `created_at: DateTime` / `chat_id: Integer`; change `user_id` to `Integer` (Telegram user ids are int) (B-17)
+- `app/ingestion/base.py` — extract `_request_with_retry` from `BaseConnector` into module-level `app/ingestion/http_utils.py`; have `BaseConnector` re-export it. Required so `app/pipeline/validation.py` can call it without instantiating a connector (B-01).
 
-**Removed:** none (Plan A removed the v3 surface; Plan B only adds).
+**Note on middleware:** `app/bot/middleware.py` already uses `update.effective_chat.id`, which python-telegram-bot resolves from both `Message` and `CallbackQuery` updates. **No middleware change is needed** — the previous plan version called for one and was incorrect. B-18 has been reduced to a verification test only.
+
+**Removed:** none for app code. Plan A removed the v3 bot surface; Plan B only adds. The dead config keys listed above are deleted as cleanup, not feature removal.
 
 ---
 
 ## Tasks
+
+### B-00 — Schema migrations (do this first)
+
+**Files:** `app/models.py`, `tests/test_models.py`
+
+Plan A's models do not match what Plan B's tasks assume. Land all schema changes in one task before any feature work so later tasks can rely on them.
+
+1. **`CandidateBrief`** — add `evidence_json: Mapped[Any | None] = mapped_column(JSON(none_as_null=True))`. Required by B-06.
+2. **`CandidateFeedback`** — drop `rating` and `submitted_at`; add:
+   ```python
+   label: Mapped[str] = mapped_column(String(10), nullable=False)        # 'up' | 'down'
+   chat_id: Mapped[int] = mapped_column(Integer, nullable=False)
+   created_at: Mapped[datetime] = mapped_column(
+       DateTime, nullable=False, default=lambda: datetime.now(UTC)
+   )
+   ```
+   Change `user_id` from `String(100)` to `Integer` (Telegram user ids are integers). Keep the existing `UniqueConstraint("candidate_id", "user_id", "brief_id")`.
+3. **`LifecycleEvent`** — new table:
+   ```python
+   class LifecycleEvent(Base):
+       __tablename__ = "lifecycle_events"
+       id: Mapped[int] = mapped_column(Integer, primary_key=True)
+       candidate_id: Mapped[int] = mapped_column(
+           Integer, ForeignKey("opportunity_candidates.id"), nullable=False, index=True
+       )
+       old_state: Mapped[str | None] = mapped_column(String(50))
+       new_state: Mapped[str] = mapped_column(String(50), nullable=False)
+       score_total: Mapped[float | None] = mapped_column(Float)
+       was_alerted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+       recorded_at: Mapped[datetime] = mapped_column(
+           DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True
+       )
+   ```
+
+**Migration strategy:** the project uses `init_db()` to `create_all()` against a fresh sqlite file in dev. There is no Alembic. For an existing dev DB, the fastest path is `rm devtrend.db` and let backfill rebuild — document this in `README.md` (B-21). No production deploys exist yet.
+
+**Tests:** `test_models.py` imports each new column / table and runs `Base.metadata.create_all(engine)` against an in-memory SQLite to confirm schema validity. Existing tests that read `CandidateFeedback.rating` / `submitted_at` (if any) need to be updated in this task.
+
+**Suggested commit:** `feat(models): schema migrations for v4.B (LifecycleEvent, brief evidence_json, feedback reshape)`
+
+---
 
 ### B-01 — Stage 6: validation.py
 
@@ -86,10 +134,11 @@ async def run_validation(
 - Endpoint: `GET https://api.github.com/search/repositories?q={keywords}+in:name,description,readme&sort=stars&per_page=30`
 - Returns: `repo_count` (capped at 30; GitHub's response includes total_count which we use directly for the dimension), `top_repos_json` (top 5 by stars: name, stars, url, language).
 - `star_delta_30d`: for each of the top 5, hit `/repos/{owner}/{name}/stargazers` (paginated; expensive). **Phase 1 simplification:** approximate as `stars - stars_30d_ago` using the previous `CandidateValidation` row for the same candidate. First-ever validation has `star_delta_30d=0`.
-- Reuse `_request_with_retry` from existing connectors for rate-limit / 403 handling.
+- Use the new module-level `request_with_retry()` helper from `app/ingestion/http_utils.py` (extracted from `BaseConnector._request_with_retry` in this task — see "Modified files" at the top of the plan). This avoids instantiating a `BaseConnector` from a pipeline module. Update the four existing connectors to call the module-level function so behaviour is unchanged.
 
 **`count_show_hn_matches`:**
-- SQL: `SELECT COUNT(*) FROM source_items WHERE role='validation' AND source_type='hn' AND ingested_at >= now-30d AND lower(title) LIKE ANY(:keyword_patterns)`.
+- SQL: `SELECT COUNT(*) FROM source_items WHERE source_type='hn' AND ingested_at >= now-30d AND (lower(title) LIKE :pat1 OR lower(title) LIKE :pat2 OR ...)`.
+- **Note:** the HN connector does not currently set `role='validation'` on Show HN posts (only the GitHub connector tags `role='validation'`). Don't filter by role here — match on `source_type='hn'` plus a Show-HN title prefix in one of the patterns (e.g. `lower(title) LIKE 'show hn:%'`) when you want to restrict to launch posts. A separate task to add Show-HN role tagging is a Plan C item, not Plan B.
 - `top_show_hn_json`: top 5 by HN points (stored in `metadata_json['points']`).
 
 **Refresh policy:** re-validate at most weekly per candidate (default `refresh_age_days=7`). Daily scoring uses the most-recent snapshot — fresh enough for slow-moving GitHub-stars signal.
@@ -256,9 +305,9 @@ async def update_lifecycle_states_and_emit_transitions(
     Returns the collected transitions, sorted by score_total DESC."""
 ```
 
-`LifecycleTransition` is a Pydantic dataclass: `candidate_id, old_state, new_state, score_total, problem_statement` (last field copied for downstream notification rendering — saves an extra DB hit).
+`LifecycleTransition` is a `pydantic.BaseModel` (NOT `pydantic.dataclasses.dataclass`; the two are not interchangeable for downstream JSON serialisation): `candidate_id, old_state, new_state, score_total, problem_statement` (last field copied for downstream notification rendering — saves an extra DB hit).
 
-**Persistence: `LifecycleEvent` table.** Each transition is also written to a new ORM table `LifecycleEvent(id, candidate_id, old_state, new_state, recorded_at, score_total, was_alerted)` (add to `app/models.py` in this task). The `was_alerted` bool is set after `emit_lifecycle_alerts()` returns: alerts that were actually pushed get `was_alerted=True`; capped overflow gets `False`. The digest job (B-08) reads recent unalerted rows to compute the overflow-note count. Pruning: `LifecycleEvent` rows older than 30 days are removed by the weekly pruning job (extension covered in Plan C).
+**Persistence: `LifecycleEvent` table.** The model itself was added in B-00. This task only writes rows. Each transition is appended to `lifecycle_events`. The `was_alerted` bool is set after `emit_lifecycle_alerts()` returns: alerts that were actually pushed get `was_alerted=True`; capped overflow gets `False`. The digest job (B-08) reads recent unalerted rows to compute the overflow-note count. Pruning: `LifecycleEvent` rows older than 30 days are removed by the weekly pruning job (extension covered in Plan C).
 
 The momentum/frequency thresholds in `derive_lifecycle_state` use the *normalised* scores from the latest history row (read from `score_breakdown_json`), not raw values. Reason: thresholds are stable across the candidate population because the inputs are percentile-normalised.
 
@@ -270,7 +319,14 @@ def derive_lifecycle_state(candidate, history):
     momentum, frequency = bd["momentum"]["score"], bd["frequency"]["score"]
 
     age_days = (latest.scored_at - candidate.created_at).days
-    last_pp_age = (latest.scored_at - candidate.last_evidence_at).days
+    # last_evidence_at is nullable on OpportunityCandidate. A candidate with no
+    # evidence yet is treated as 'fresh' — fall through to the momentum/frequency
+    # rules rather than crashing on None subtraction.
+    last_pp_age = (
+        (latest.scored_at - candidate.last_evidence_at).days
+        if candidate.last_evidence_at is not None
+        else 0
+    )
 
     if last_pp_age >= 14: return "dormant"
     if momentum >= 60 and frequency < 30 and age_days < 14: return "emerging"
@@ -284,6 +340,7 @@ def derive_lifecycle_state(candidate, history):
 - `test_derive_hot` — momentum=70, frequency=40 → 'hot'.
 - `test_derive_saturated` — momentum=20, frequency=80 → 'saturated'.
 - `test_derive_dormant_overrides_other_signals` — last_evidence_at 20 days ago; momentum still high → 'dormant'.
+- `test_derive_handles_null_last_evidence_at` — candidate.last_evidence_at=None, momentum=70, frequency=20, age=5d → 'emerging' (not a crash).
 - `test_derive_none_when_no_match`
 - `test_update_emits_transition_only_on_change` — pre-seed candidate with `lifecycle_state='emerging'`; new derived state also 'emerging'; assert empty transitions list AND no new LifecycleEvent row.
 - `test_update_emits_transition_on_change` — pre-seed 'emerging' → derived 'hot' → assert one transition emitted AND one LifecycleEvent row written with `was_alerted=False` (alerter sets the flag later).
@@ -312,11 +369,23 @@ async def generate_briefs_for(
     is skipped (no partial brief)."""
 ```
 
-`evidence_json` is the denormalised snapshot — list of up to 5 PainPoints, each with `{problem_text, audience, source_type, source_url, excerpt, extracted_at}`. Same pattern as v3's `OpportunityBrief.evidence_json`.
+`evidence_json` is the denormalised snapshot — list of up to 5 PainPoints, each with `{problem_text, audience, source_type, source_url, excerpt, extracted_at}`. The column itself was added in B-00.
 
-`generate_brief` reuses the existing `LLMAdapter.generate_brief` — keep its signature compatible with v3 to avoid breaking the adapter contract. Pass `(candidate, evidence)` and the implementation builds the prompt internally.
+**LLM contract.** Keep the existing abstract method signature: `async def generate_brief(self, context: dict[str, Any]) -> str` (`app/llm/base.py:10`). Pass a structured `context` dict — do NOT change the signature to positional args:
 
-**Idempotency:** check if a `CandidateBrief` exists for `(candidate_id, generated_at::date)` before creating a new one. Same-day re-run is a no-op.
+```python
+context = {
+    "problem_statement": candidate.problem_statement,
+    "audience": candidate.audience,
+    "why_now": candidate.why_now,
+    "evidence": evidence_json,   # the list-of-5 dict snapshot
+}
+brief_text = await llm.generate_brief(context)
+```
+
+The returned string becomes `CandidateBrief.summary`. For `headline`, take the first ≤120 chars of `candidate.problem_statement` (deterministic — no second LLM call needed for Plan B). A future enhancement can ask the LLM for a structured `{headline, summary}` payload; do not block Plan B on it.
+
+**Idempotency:** SQLite has no `::date` cast. Compute `today_start = datetime(as_of.year, as_of.month, as_of.day, tzinfo=UTC)` and query `WHERE candidate_id = :id AND generated_at >= :today_start`. If a row exists, skip. Same-day re-run is a no-op.
 
 **Tests:**
 - `test_generate_brief_persists` — using MockLLMAdapter; pre-seed candidate + 3 PainPoints; run; assert one CandidateBrief with non-empty summary and evidence_json.
@@ -350,11 +419,14 @@ scheduler.add_job(
 
 `max_instances=1` prevents overlap with the next day's run if it's running long.
 
-New config:
-```python
-scoring_cron_hour: int = 4
-digest_cron_hour: int = 8
-```
+**Config (already declared in `app/config.py` from v3 — Plan B repurposes them):**
+- `scoring_cron_hour: int` — change default from `2` to `4` (the v3 value 2 conflicts with the 03:30 daily pipeline; v4 needs to run after it).
+- `scoring_cron_minute: int` — keep existing default `15`; pass it to `CronTrigger(hour=…, minute=…)` in the example above.
+- `digest_cron_hour: int = 8` — already correct, no change.
+- `digest_cron_minute: int = 0` — already correct.
+- `max_alerts_per_day: int = 3` — already declared in Plan A, used by B-09.
+
+No new keys are introduced in B-07 — only the `scoring_cron_hour` default changes.
 
 **Tests:** `test_scheduler_registers_v4b_jobs` — assert `daily_scoring` and `daily_digest` jobs exist.
 
@@ -399,7 +471,7 @@ Validation: 3 small repos, no major incumbent.
 #2 — ...
 ```
 
-`build_digest_buttons` returns an `InlineKeyboardMarkup` with one row per candidate: `[👍 useful] [👎 not useful] [📄 details]`. Callback data: `fb:up:42`, `fb:down:42`, `view:42`.
+`build_digest_buttons` returns an `InlineKeyboardMarkup` with one row per candidate: `[👍 useful] [👎 not useful] [📄 details]`. Callback data: `fb:up:42`, `fb:down:42`, `view:42:7` (where `7` is the brief id, or the literal string `none` if no brief exists yet). The triple-colon format is required so B-17's `_extract_brief_id_from_message` can resolve a `brief_id` from the message keyboard. Older messages with the legacy `view:42` form are tolerated — the parser falls back to `brief_id=NULL`.
 
 `fetch_top_candidates` excludes `is_archived`, requires `specificity > settings.specificity_gate`, orders by latest `CandidateScoreHistory.score_total` DESC.
 
@@ -423,12 +495,18 @@ Validation: 3 small repos, no major incumbent.
 async def emit_lifecycle_alerts(
     transitions: list[LifecycleTransition],
     bot: Bot,
+    chat_ids: list[int],
     settings: Settings,
 ) -> int:
-    """Pushes up to settings.max_alerts_per_day transitions, sorted by score_total DESC.
-    Over-cap transitions are logged silently and surfaced in next morning's digest as
-    the 'overflow' note. Returns count of alerts sent."""
+    """Pushes up to settings.max_alerts_per_day transitions, sorted by score_total DESC,
+    to every chat in chat_ids. Over-cap transitions are logged silently and surfaced in
+    next morning's digest as the 'overflow' note. Returns count of alert *sends* (one
+    transition × one chat_id = one send). Failures per chat are caught and logged so a
+    single bad chat does not block the rest. After successful pushes, mark the
+    corresponding LifecycleEvent rows with was_alerted=True (overflow rows stay False)."""
 ```
+
+The caller is the scoring cron in B-07: `await emit_lifecycle_alerts(transitions, bot, settings.telegram_allowed_chat_ids, settings)`.
 
 Message shape (one per alert):
 
@@ -568,6 +646,8 @@ Lists all 6 categories with active-candidate counts and lifecycle breakdowns:
 
 SQL: `SELECT category_id, lifecycle_state, COUNT(*) FROM opportunity_candidates WHERE is_archived=False AND specificity > :gate GROUP BY category_id, lifecycle_state`.
 
+**Staleness note.** `lifecycle_state` is persisted on the candidate row and updated only when scoring runs. Categories whose candidates have not been scored in the last 24h will show whatever state was last persisted — that's intentional (a slow category should still appear), but worth knowing if `/categories` ever surfaces apparently-stale data.
+
 **Tests:**
 - `test_categories_command_lists_all_with_counts`
 - `test_categories_zero_active_renders_dash` — category with no candidates.
@@ -607,9 +687,13 @@ Same render as `/opportunities` but filtered to `lifecycle_state='emerging'`. So
 
 ### B-16 — Register handlers + command menu
 
-**Files:** `app/bot/handlers.py`, `app/bot/bot.py`, `tests/bot/test_command_menu.py`
+**Files:** `app/bot/bot.py`, `app/bot/handlers.py`, `app/main.py`, `tests/bot/test_command_menu.py`
 
-Wire the new handlers into the bot dispatcher in `app/bot/bot.py`. Update `set_my_commands` to advertise the v4 set:
+Three things to wire, in three different files:
+
+1. **`app/bot/bot.py`** — `build_application()` already calls `register_command_handlers(application)`. Extend `register_command_handlers` (in `handlers.py`) to register the v4 handlers from `v4_handlers.py` plus the callback handler from `feedback.py`. Also call a new `register_callback_handlers(application)` if you prefer to keep them separate — either is fine, just pick one and stay consistent.
+2. **`app/bot/handlers.py`** — replace `_HELP_TEXT` (which currently says v4 commands are "coming soon") with the v4 command list.
+3. **`app/main.py`** — `set_my_commands(...)` is currently called in the lifespan around line 69. Replace its body with the v4 list:
 
 ```python
 [
@@ -624,9 +708,7 @@ Wire the new handlers into the bot dispatcher in `app/bot/bot.py`. Update `set_m
 ]
 ```
 
-Update `/help` text accordingly.
-
-**Tests:** `test_set_my_commands_includes_v4_set` — assert each new command is in the registered list and `/briefing`, `/niches`, etc. are not.
+**Tests:** `test_set_my_commands_includes_v4_set` — assert each new command is in the registered list and `/briefing`, `/niches`, etc. are not. Also `test_help_text_lists_v4_commands` — assert the rendered `_HELP_TEXT` no longer contains "coming soon" and contains each v4 command name.
 
 **Suggested commit:** `feat(bot): register v4 command menu`
 
@@ -635,6 +717,8 @@ Update `/help` text accordingly.
 ### B-17 — Feedback callback handler
 
 **Files:** `app/bot/feedback.py`, `tests/bot/test_feedback.py`
+
+**Pre-req:** B-00 has reshaped `CandidateFeedback`. The schema now has `label: String(10)`, `chat_id: Integer`, `created_at: DateTime`, `user_id: Integer` (matching Telegram's `from_user.id`).
 
 ```python
 async def cmd_feedback_callback(update: Update, ctx) -> None:
@@ -675,7 +759,7 @@ await update.callback_query.edit_message_reply_markup(reply_markup=_replace_with
 
 `_replace_with_confirmation('up')` returns a single-row keyboard with a disabled-looking `✓ Marked useful` button — visual confirmation, prevents double-clicks.
 
-The brief_id-from-message extraction: we don't have a great hook for this. Practical approach — embed the brief_id in the `[📄 details]` callback_data as `view:<candidate_id>:<brief_id>`; when a feedback callback arrives, we read the message's reply_markup, find the `view:` entry, parse out brief_id. If the message has no `[📄 details]` button (e.g. older alerts), brief_id stays NULL.
+The brief_id-from-message extraction: we don't have a great hook for this. Practical approach — embed the brief_id in the `[📄 details]` callback_data as `view:<candidate_id>:<brief_id>` (or `view:<candidate_id>:none` when no brief exists yet — see B-08). When a feedback callback arrives, read the message's reply_markup, find the `view:` entry, parse out brief_id. If the third segment is `none`, or the message has no `[📄 details]` button (e.g. older alerts that used the legacy two-segment `view:42` form), brief_id stays NULL.
 
 **Tests:**
 - `test_feedback_inserts_row` — fire callback `fb:up:42`; assert one row in CandidateFeedback.
@@ -687,26 +771,19 @@ The brief_id-from-message extraction: we don't have a great hook for this. Pract
 
 ---
 
-### B-18 — Allowlist middleware extension
+### B-18 — Allowlist middleware: callback-query coverage test
 
-**Files:** `app/bot/middleware.py`, `tests/bot/test_middleware.py`
+**Files:** `tests/bot/test_middleware.py` (only)
 
-Existing middleware checks `update.message.chat_id` against `TELEGRAM_ALLOWED_CHAT_IDS`. Extend it to also check `update.callback_query.message.chat_id` for callback updates (otherwise unauthorised chats could fire 👍/👎 if they ever obtained a button).
+The current middleware (`app/bot/middleware.py`) already keys off `update.effective_chat.id`. python-telegram-bot resolves `effective_chat` from both `Message` and `CallbackQuery` updates, so callback queries are already gated. **No code change is required.**
 
-```python
-def _chat_id_from_update(update: Update) -> int | None:
-    if update.message: return update.message.chat_id
-    if update.callback_query and update.callback_query.message:
-        return update.callback_query.message.chat_id
-    return None
-```
+This task only adds tests to lock that behaviour in:
 
-**Tests:**
-- `test_middleware_blocks_callback_from_unallowed_chat`
-- `test_middleware_allows_callback_from_allowed_chat`
-- (existing message-allowlist tests still pass)
+- `test_middleware_blocks_callback_from_unallowed_chat` — construct a fake `Update` whose `callback_query.message.chat.id` is not in the allowlist; assert the dispatcher short-circuits with `ApplicationHandlerStop`.
+- `test_middleware_allows_callback_from_allowed_chat` — same shape, allowed chat; assert the handler is reached.
+- (existing message-allowlist tests still pass, untouched)
 
-**Suggested commit:** `fix(bot): allowlist middleware also gates callback queries`
+**Suggested commit:** `test(bot): allowlist middleware gates callback queries (regression coverage)`
 
 ---
 
@@ -715,11 +792,11 @@ def _chat_id_from_update(update: Update) -> int | None:
 **Files:** `tests/bot/test_v4_e2e_push.py`
 
 A single integration test that:
-1. Sets up an in-memory DB with 3 active candidates of varying score/lifecycle.
+1. Sets up an in-memory DB with **5** active candidates of varying score/lifecycle (must exceed `max_alerts_per_day=3` so the cap triggers — 3 candidates = no overflow path covered).
 2. Mocks the bot's `send_message` and tracks calls.
 3. Runs `_scoring_job` (which runs validation, scoring, lifecycle, emit_alerts) — patched to use a mock LLM and a stubbed GitHub client.
-4. Asserts: alerts pushed in score order, capped at `max_alerts_per_day`, each with the expected button structure.
-5. Runs `_digest_job` — asserts top-3 message contains all three candidates and inline buttons.
+4. Asserts: alerts pushed in score order, capped at `max_alerts_per_day`, each with the expected button structure (`fb:up:<id>`, `fb:down:<id>`, `view:<id>:<brief_id|none>`). Asserts overflow LifecycleEvent rows have `was_alerted=False`.
+5. Runs `_digest_job` — asserts top-3 message contains the top 3 candidates by score and inline buttons; asserts overflow footer "+N other transitions overnight" is rendered when applicable.
 
 **Suggested commit:** `test(bot): end-to-end push flow with mocks`
 
@@ -739,39 +816,53 @@ Add a config-dispatched test:
 
 ---
 
-### B-21 — Documentation update
+### B-21 — Documentation + cleanup
 
-**Files:** `README.md`, `KANBAN.md`, `docs/evaluation-plan.md`
+**Files:** `README.md`, `KANBAN.md`, `docs/evaluation-plan.md`, `pyproject.toml`, `app/config.py`, `.env.example`
 
-`README.md`:
+**`pyproject.toml`:** bump version `3.0.0 → 4.0.0` (Plan A leftover — was flagged but not landed).
+
+**`app/config.py` + `.env.example`:** delete the dead v3 config keys that are no longer referenced anywhere in the codebase after Plan A:
+- `growth_weight`, `demand_weight`, `novelty_weight`
+- `scoring_growth_window_days`, `scoring_novelty_max_age_days`, `scoring_normalization_window_days`
+- `briefing_top_n`, `trending_top_n`, `trending_window_hours`
+- `spike_alert_threshold`
+
+Run `grep -rn "growth_weight\|briefing_top_n\|trending_top_n\|spike_alert_threshold" app/ tests/` first to confirm zero references; abort the deletion if any remain (a grep miss means a real caller was overlooked).
+
+**`README.md`:**
 - Remove the Plan A "in progress" banner; replace with v4-current command summary.
 - Document the LLM_PROVIDER / EMBEDDING_PROVIDER selection.
 - Document the new daily timeline (03:30 pipeline, 04:00 scoring, 08:00 digest).
 - Mention the 👍/👎 feedback collection — explain it's stored but not yet acted upon.
+- Add a "Migrating an existing dev DB to v4.B" subsection: instruct `rm devtrend.db` (since B-00 reshapes `CandidateFeedback` and there's no Alembic). Backfill on next start rebuilds it.
+- Remove the duplicated `## Upgrading to v4` section (Plan A review minor item #2, still outstanding).
 
-`KANBAN.md`: mark Plan A tasks done; expand v4.B and v4.C entries.
+**`KANBAN.md`:** mark Plan A tasks done; expand v4.B and v4.C entries.
 
-`docs/evaluation-plan.md`: add a v4-specific section:
+**`docs/evaluation-plan.md`:** add a v4-specific section:
 - **Extraction precision** — manual review of 50 random PainPoints; target ≥80% are genuine unmet-need signals.
 - **Cluster coherence** — for each candidate with ≥5 PainPoints, manually rate "do these 5 belong together?" 1–5; target average ≥4.
 - **Specificity calibration** — sanity-check the LLM's specificity scores against your own 1–5 ratings on 20 candidates; target Spearman ≥0.6.
 - **Lifecycle stability** — count candidates that bounce between states day-to-day; target <5%.
 
-**Suggested commit:** `docs(v4): update README + KANBAN + evaluation-plan for Plan B`
+**Suggested commit:** `docs(v4): README + KANBAN + evaluation-plan; chore: drop dead v3 config keys, bump to 4.0.0`
 
 ---
 
 ## Definition of Done — Plan B
 
+- [ ] Schema migrations from B-00 landed (`LifecycleEvent` table, `CandidateBrief.evidence_json`, `CandidateFeedback` reshape) and `Base.metadata.create_all` succeeds on a fresh sqlite
 - [ ] Validation snapshots are written weekly per active candidate
 - [ ] `CandidateScoreHistory` is populated daily for all above-gate candidates
-- [ ] Lifecycle states transition correctly; alerts fire (capped) immediately after scoring
-- [ ] Daily digest pushes top-3 with inline buttons at 08:00 UTC
+- [ ] Lifecycle states transition correctly; alerts fire (capped) immediately after scoring; `LifecycleEvent.was_alerted` flags overflow vs. pushed
+- [ ] Daily digest pushes top-3 with inline buttons at 08:00 UTC; overflow footer renders when applicable
 - [ ] All five new bot commands (`/opportunities`, `/opportunity`, `/categories`, `/category`, `/emerging`) work with allowlist middleware
-- [ ] 👍/👎 callbacks insert/flip `CandidateFeedback` rows
-- [ ] Allowlist middleware gates callback queries
+- [ ] 👍/👎 callbacks insert/flip `CandidateFeedback` rows (label-based, not rating-based)
+- [ ] Allowlist middleware gates callback queries (verified by test, no code change needed)
 - [ ] Full test suite green: `uv run pytest`
 - [ ] Specificity gate is consistently enforced everywhere except `/opportunity <id>` (which warns instead)
+- [ ] Dead v3 config keys deleted; `pyproject.toml` at `4.0.0`
 - [ ] README and evaluation-plan docs updated to reflect v4 reality
 
 ---
