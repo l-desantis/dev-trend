@@ -1,6 +1,8 @@
+import pytest
+pytest.skip("v3 — scheduler hooks removed in Plan A; deferred to Plan C", allow_module_level=True)
+
 from unittest.mock import AsyncMock, patch
 from datetime import datetime, timedelta, timezone
-import pytest
 
 from app.db import get_session, init_db
 

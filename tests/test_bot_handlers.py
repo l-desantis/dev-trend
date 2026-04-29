@@ -1,5 +1,5 @@
+"""Bot handler tests — v4 trimmed."""
 import pytest
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from telegram.ext import ApplicationHandlerStop
 
@@ -94,6 +94,12 @@ class TestHelpHandler:
         text = update.effective_message.reply_text.call_args.args[0]
         assert "/help" in text
 
+    async def test_reply_mentions_v4_coming_soon(self, mock_context: MagicMock) -> None:
+        update = _make_update(chat_id=12345)
+        await help_handler(update, mock_context)
+        text = update.effective_message.reply_text.call_args.args[0]
+        assert "next release" in text or "v4" in text.lower()
+
     async def test_no_error_when_no_message(self, mock_context: MagicMock) -> None:
         update = _make_update(chat_id=12345)
         update.effective_message = None
@@ -126,199 +132,33 @@ class TestSourcesHandler:
         assert "github" in text
 
 
-class TestBriefingHandler:
-    async def test_briefing_returns_top_n_briefs(self, mock_context):
-        from app.bot.handlers import briefing_handler
-        from app.db import get_session, init_db
-        from app.models import Niche, OpportunityBrief
-        from datetime import datetime, timezone
+class TestBotCommandMenuRegistered:
+    def test_only_trimmed_commands_registered(self) -> None:
+        from app.bot.handlers import register_command_handlers
+        from telegram.ext import Application, CommandHandler
+        from unittest.mock import MagicMock
 
-        await init_db()
-        async with get_session() as s:
-            niche = Niche(name="X", slug="x", category="c", keywords_json=[])
-            s.add(niche); await s.flush()
-            s.add(OpportunityBrief(
-                niche_id=niche.id,
-                headline="X — Score 84",
-                summary="Strong momentum.",
-                score_total=84.0,
-                score_breakdown_json={"growth": 90, "demand": 80, "novelty": 70},
-                evidence_json=[],
-                forecast_label="Rising",
-                has_issues=False,
-                generated_at=datetime.now(timezone.utc),
-                model_name="qwen2.5",
-            ))
-            await s.commit()
+        app = MagicMock(spec=Application)
+        register_command_handlers(app)
 
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        await briefing_handler(update, mock_context)
+        registered = [
+            cmd
+            for call in app.add_handler.call_args_list
+            if isinstance(call.args[0], CommandHandler)
+            for cmd in call.args[0].commands
+        ]
+        assert "start" in registered
+        assert "help" in registered
+        assert "sources" in registered
+        # v3 commands must be absent
+        assert "briefing" not in registered
+        assert "niches" not in registered
+        assert "niche" not in registered
+        assert "trending" not in registered
 
-        text = update.effective_message.reply_text.call_args.args[0]
-        assert "84" in text
-        assert "↑" in text
-        assert "X" in text
-
-    async def test_briefing_handles_no_briefs(self, mock_context):
-        from app.bot.handlers import briefing_handler
-        from app.db import init_db
-
-        await init_db()
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        await briefing_handler(update, mock_context)
-        text = update.effective_message.reply_text.call_args.args[0]
-        assert "no briefs" in text.lower() or "not yet" in text.lower()
-
-
-class TestNichesHandler:
-    async def test_niches_lists_all_with_scores(self, mock_context):
-        from app.bot.handlers import niches_handler
-        from app.db import get_session, init_db
-        from app.models import Niche, NicheScoreHistory
-        from datetime import datetime, timezone
-
-        await init_db()
-        async with get_session() as s:
-            n1 = Niche(name="Alpha", slug="alpha", category="c", keywords_json=[])
-            n2 = Niche(name="Beta", slug="beta", category="c", keywords_json=[])
-            s.add_all([n1, n2]); await s.flush()
-            s.add_all([
-                NicheScoreHistory(niche_id=n1.id, score_total=70.0,
-                                  score_breakdown_json={}, scored_at=datetime.now(timezone.utc)),
-                NicheScoreHistory(niche_id=n2.id, score_total=85.0,
-                                  score_breakdown_json={}, scored_at=datetime.now(timezone.utc)),
-            ])
-            await s.commit()
-
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        await niches_handler(update, mock_context)
-        text = update.effective_message.reply_text.call_args.args[0]
-        assert "Alpha" in text and "Beta" in text
-        # Beta listed first (higher score)
-        assert text.index("Beta") < text.index("Alpha")
-
-
-class TestNicheHandler:
-    async def test_niche_returns_full_scorecard(self, mock_context):
-        from app.bot.handlers import niche_handler
-        from app.db import get_session, init_db
-        from app.models import Niche, OpportunityBrief
-        from datetime import datetime, timezone
-
-        await init_db()
-        async with get_session() as s:
-            n = Niche(name="Alpha", slug="alpha", category="c",
-                      keywords_json=[], summary="An alpha niche.")
-            s.add(n); await s.flush()
-            s.add(OpportunityBrief(
-                niche_id=n.id, headline="Alpha — Score 80",
-                summary="Strong week.", score_total=80.0,
-                score_breakdown_json={"growth": 85, "demand": 78, "novelty": 75},
-                evidence_json=[{"source_type": "github", "title": "repo-x",
-                                "url": "https://x", "excerpt": "a repo"}],
-                forecast_label="Rising", has_issues=False,
-                generated_at=datetime.now(timezone.utc), model_name="qwen2.5",
-            ))
-            await s.commit()
-
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        mock_context.args = ["alpha"]
-        await niche_handler(update, mock_context)
-        text = update.effective_message.reply_text.call_args.args[0]
-        assert "Alpha" in text
-        assert "80" in text
-        assert "Growth" in text or "growth" in text
-        assert "repo" in text  # title escaped: repo\-x
-
-    async def test_niche_unknown_slug(self, mock_context):
-        from app.bot.handlers import niche_handler
-        from app.db import init_db
-
-        await init_db()
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        mock_context.args = ["does-not-exist"]
-        await niche_handler(update, mock_context)
-        text = update.effective_message.reply_text.call_args.args[0].lower()
-        assert "not found" in text or "unknown" in text
-
-    async def test_niche_no_args(self, mock_context):
-        from app.bot.handlers import niche_handler
-        from app.db import init_db
-
-        await init_db()
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        mock_context.args = []
-        await niche_handler(update, mock_context)
-        text = update.effective_message.reply_text.call_args.args[0].lower()
-        assert "usage" in text or "/niche" in text
-
-
-class TestTrendingHandler:
-    async def test_trending_ranks_by_delta(self, mock_context):
-        from app.bot.handlers import trending_handler
-        from app.db import get_session, init_db
-        from app.models import Niche, SourceItem
-        from datetime import datetime, timedelta, timezone
-
-        await init_db()
-        now = datetime.now(timezone.utc)
-        async with get_session() as s:
-            n1 = Niche(name="Hot", slug="hot", category="c", keywords_json=[])
-            n2 = Niche(name="Cold", slug="cold", category="c", keywords_json=[])
-            s.add_all([n1, n2]); await s.flush()
-
-            def make_item(niche_id, when, ext):
-                return SourceItem(
-                    source_type="hn", external_id=ext, title=f"t-{ext}",
-                    body="", url="https://x", created_at=when,
-                    ingested_at=when, niche_id=niche_id, metadata_json={},
-                )
-
-            # Hot: 5 in last 24h, 1 prior 24h → delta +4
-            for i in range(5):
-                s.add(make_item(n1.id, now - timedelta(hours=2), f"h{i}"))
-            s.add(make_item(n1.id, now - timedelta(hours=30), "h-prev"))
-            # Cold: 1 in last 24h, 3 prior 24h → delta -2
-            s.add(make_item(n2.id, now - timedelta(hours=3), "c1"))
-            for i in range(3):
-                s.add(make_item(n2.id, now - timedelta(hours=30), f"c-prev-{i}"))
-            await s.commit()
-
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        await trending_handler(update, mock_context)
-        text = update.effective_message.reply_text.call_args.args[0]
-        assert "Hot" in text
-        # Hot listed before Cold (higher delta)
-        if "Cold" in text:
-            assert text.index("Hot") < text.index("Cold")
-
-    async def test_trending_no_signals(self, mock_context):
-        from app.bot.handlers import trending_handler
-        from app.db import init_db
-
-        await init_db()
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        await trending_handler(update, mock_context)
-        text = update.effective_message.reply_text.call_args.args[0].lower()
-        assert "no" in text and ("trending" in text or "signal" in text)
-
-
-# ---------------------------------------------------------------------------
-# M6-05 gap-fill: allowlist combined check, MarkdownV2 truncation, /sources timestamp
-# ---------------------------------------------------------------------------
 
 class TestAllowlistSecurityPath:
     async def test_unknown_chat_rejected_and_no_downstream(self, mock_context: MagicMock) -> None:
-        """Unknown chat ID: polite rejection sent AND ApplicationHandlerStop raised
-        (preventing any downstream command handler from executing)."""
         update = _make_update(chat_id=99999)
         with patch("app.bot.middleware.get_settings") as mock_settings:
             mock_settings.return_value.telegram_allowed_chat_ids = [12345]
@@ -329,55 +169,14 @@ class TestAllowlistSecurityPath:
         )
 
 
-class TestNicheHandlerTruncation:
-    async def test_long_brief_is_truncated_to_4096(self, mock_context: MagicMock) -> None:
-        """A niche with a 5000-char brief body produces a reply ≤ 4096 chars."""
-        from app.bot.handlers import niche_handler
-        from app.db import get_session, init_db
-        from app.models import Niche, OpportunityBrief
-        from datetime import datetime, timezone
-
-        await init_db()
-        long_summary = "A" * 5000
-        async with get_session() as s:
-            n = Niche(name="LongBrief", slug="long-brief", category="c", keywords_json=[])
-            s.add(n)
-            await s.flush()
-            s.add(OpportunityBrief(
-                niche_id=n.id,
-                headline="LongBrief — Score 80",
-                summary=long_summary,
-                score_total=80.0,
-                score_breakdown_json={"growth": 80, "demand": 80, "novelty": 80},
-                evidence_json=[],
-                forecast_label="Rising",
-                has_issues=False,
-                generated_at=datetime.now(timezone.utc),
-                model_name="mock",
-            ))
-            await s.commit()
-
-        update = _make_update(chat_id=42)
-        update.effective_message.reply_text = AsyncMock()
-        mock_context.args = ["long-brief"]
-        await niche_handler(update, mock_context)
-
-        text = update.effective_message.reply_text.call_args.args[0]
-        assert len(text) <= 4096
-        assert "…" in text  # truncation footer present
-
-
 class TestSourcesRegistryTimestamp:
     async def test_sources_shows_last_run_timestamp(self, mock_context: MagicMock) -> None:
-        """When registry has a successful run, /sources includes the last-run timestamp."""
-        from datetime import datetime, timezone, timedelta
-        from app.db import init_db
+        from datetime import datetime, timezone
 
         await init_db()
         registry = ConnectorRunRegistry()
         registry.mark_running("github")
         registry.mark_success("github", items=10, duration=2.0)
-        # Manually set a predictable last_run_at
         expected_ts = datetime(2026, 4, 20, 9, 0, tzinfo=timezone.utc)
         registry._statuses["github"].last_run_at = expected_ts
 
@@ -388,6 +187,5 @@ class TestSourcesRegistryTimestamp:
         await sources_handler(update, mock_context)
 
         text = update.effective_message.reply_text.call_args.args[0]
-        # Hyphens and colons are MarkdownV2-escaped, so check escaped form.
         assert "2026\\-04\\-20" in text
         assert "09:00" in text

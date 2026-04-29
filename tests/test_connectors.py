@@ -8,13 +8,12 @@ import httpx
 import pytest
 
 from app.db import init_db
-from app.features.niche_builder import NicheMatcher, sync_niches_from_yaml
 from app.ingestion.appstore_mock_connector import AppStoreMockConnector
 from app.ingestion.base import BaseConnector, ConnectorRunRegistry, NormalizedItem
 from app.ingestion.github_connector import GithubConnector
 from app.ingestion.hn_connector import HNConnector
 from app.ingestion.reddit_connector import RedditConnector
-from app.models import Niche, SourceItem
+from app.models import SourceItem
 from app.db import get_session
 from sqlalchemy import select
 
@@ -23,10 +22,6 @@ from sqlalchemy import select
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _empty_matcher() -> NicheMatcher:
-    return NicheMatcher({})
-
-
 def _registry() -> ConnectorRunRegistry:
     return ConnectorRunRegistry()
 
@@ -34,8 +29,8 @@ def _registry() -> ConnectorRunRegistry:
 class FakeConnector(BaseConnector):
     source_type: ClassVar[str] = "fake"
 
-    def __init__(self, client, matcher, registry, items: list[NormalizedItem]):
-        super().__init__(client, matcher, registry)
+    def __init__(self, client, registry, items: list[NormalizedItem]):
+        super().__init__(client, registry)
         self._items = items
 
     async def fetch(self, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
@@ -68,7 +63,7 @@ class TestBaseConnector:
         await init_db()
         client = httpx.AsyncClient()
         items = _fake_items(3)
-        connector = FakeConnector(client, _empty_matcher(), _registry(), items)
+        connector = FakeConnector(client, _registry(), items)
         status = await connector.run()
         assert status.last_status == "ok"
         assert status.items_ingested == 3
@@ -78,43 +73,10 @@ class TestBaseConnector:
         client = httpx.AsyncClient()
         items = _fake_items(3)
         registry = _registry()
-        connector = FakeConnector(client, _empty_matcher(), registry, items)
+        connector = FakeConnector(client, registry, items)
         await connector.run()
         status = await connector.run()
         assert status.items_ingested == 0  # all already inserted
-
-    async def test_attaches_niche_id(self):
-        await init_db()
-        async with get_session() as session:
-            niche = Niche(
-                slug="test-niche",
-                name="Test Niche",
-                keywords_json=["ai wellness"],
-            )
-            session.add(niche)
-            await session.commit()
-            await session.refresh(niche)
-            niche_id = niche.id
-
-        matcher = await NicheMatcher.from_db()
-        client = httpx.AsyncClient()
-        items = [NormalizedItem(
-            source_type="fake",
-            external_id="niche-item-1",
-            title="AI wellness coaching app",
-            body="Daily ai wellness habit tracker",
-            url=None,
-            created_at=None,
-        )]
-        connector = FakeConnector(client, matcher, _registry(), items)
-        await connector.run()
-
-        async with get_session() as session:
-            result = await session.execute(
-                select(SourceItem).where(SourceItem.external_id == "niche-item-1")
-            )
-            row = result.scalar_one()
-        assert row.niche_id == niche_id
 
     async def test_retry_on_429(self):
         await init_db()
@@ -140,10 +102,66 @@ class TestBaseConnector:
             def normalize(self, raw):
                 return []
 
-        connector = RetryConnector(client, _empty_matcher(), _registry())
+        connector = RetryConnector(client, _registry())
         status = await connector.run()
         assert status.last_status == "ok"
         assert call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Role tagging
+# ---------------------------------------------------------------------------
+
+class TestRedditRoleTagging:
+    def test_reddit_normalizes_role_extraction(self):
+        client = httpx.AsyncClient()
+        connector = RedditConnector(client, _registry())
+        raw = [{"data": {"name": "t3_abc", "title": "Test post", "selftext": "body",
+                         "permalink": "/r/startups/comments/abc", "created_utc": 1700000000.0}}]
+        items = connector.normalize(raw)
+        assert len(items) == 1
+        assert items[0].role == "extraction"
+
+
+class TestGithubRoleTagging:
+    def test_github_normalizes_role_validation(self):
+        client = httpx.AsyncClient()
+        connector = GithubConnector(client, _registry())
+        raw = [{"id": 1, "full_name": "owner/repo", "html_url": "https://github.com/owner/repo",
+                "description": "A tool", "created_at": "2026-01-01T00:00:00Z",
+                "stargazers_count": 100, "forks_count": 5, "language": "Python",
+                "topics": [], "pushed_at": "2026-04-01T00:00:00Z"}]
+        items = connector.normalize(raw)
+        assert len(items) == 1
+        assert items[0].role == "validation"
+
+
+class TestHNRoleTagging:
+    def _hit(self, title: str, tags: list[str] | None = None) -> dict:
+        return {
+            "objectID": "12345",
+            "title": title,
+            "created_at_i": 1700000000,
+            "_tags": tags or [],
+        }
+
+    def test_hn_normalizes_role_split(self):
+        client = httpx.AsyncClient()
+        connector = HNConnector(client, _registry())
+
+        ask_hn = connector.normalize([self._hit("Ask HN: Why is there no good X?")])[0]
+        show_hn = connector.normalize([self._hit("Show HN: My new tool")])[0]
+        news = connector.normalize([self._hit("Some news headline")])[0]
+
+        assert ask_hn.role == "extraction"
+        assert show_hn.role == "validation"
+        assert news.role == "ignored"
+
+    def test_hn_comment_tag_yields_extraction(self):
+        client = httpx.AsyncClient()
+        connector = HNConnector(client, _registry())
+        items = connector.normalize([self._hit("Random comment", tags=["comment"])])
+        assert items[0].role == "extraction"
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +177,7 @@ class TestGithubConnector:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = GithubConnector(client, _empty_matcher(), _registry())
+        connector = GithubConnector(client, _registry())
         raw = await connector.fetch()
         items = connector.normalize(raw)
         assert len(items) == 3
@@ -183,7 +201,7 @@ class TestHNConnector:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = HNConnector(client, _empty_matcher(), _registry())
+        connector = HNConnector(client, _registry())
         raw = await connector.fetch()
         items = connector.normalize(raw)
         assert len(items) == 3
@@ -213,7 +231,7 @@ class TestRedditConnector:
         from app.config import get_settings
         get_settings.cache_clear()
 
-        connector = RedditConnector(client, _empty_matcher(), _registry())
+        connector = RedditConnector(client, _registry())
         raw = await connector.fetch()
         assert len(request_urls) == 2
         assert any("startups" in u for u in request_urls)
@@ -246,31 +264,12 @@ class TestAppStoreMockConnector:
         get_settings.cache_clear()
 
         client = httpx.AsyncClient()
-        connector = AppStoreMockConnector(client, _empty_matcher(), _registry(), mock_dir=tmp_path)
+        connector = AppStoreMockConnector(client, _registry(), mock_dir=tmp_path)
         raw = await connector.fetch()
         items = connector.normalize(raw)
         assert len(items) == 1
         assert items[0].external_id == "appstore-test-001"
         assert items[0].title == "TestApp"
-
-    async def test_all_records_match_at_least_one_niche(self, tmp_path, monkeypatch):
-        """Every mock app record must hit ≥1 niche keyword."""
-        await init_db()
-        await sync_niches_from_yaml(Path("data/niches.yaml"))
-        matcher = await NicheMatcher.from_db()
-
-        monkeypatch.setenv("ENABLE_MOCK_APPSTORE", "true")
-        from app.config import get_settings
-        get_settings.cache_clear()
-
-        client = httpx.AsyncClient()
-        mock_dir = Path("data/mock")
-        connector = AppStoreMockConnector(client, matcher, _registry(), mock_dir=mock_dir)
-        raw = await connector.fetch()
-        items = connector.normalize(raw)
-        assert items, "No mock records found"
-        unmatched = [i for i in items if matcher.match(i.title, i.body) is None]
-        assert unmatched == [], f"Items with no niche match: {[i.external_id for i in unmatched]}"
 
     async def test_since_param_is_ignored(self, tmp_path, monkeypatch):
         record = {
@@ -292,8 +291,7 @@ class TestAppStoreMockConnector:
         get_settings.cache_clear()
 
         client = httpx.AsyncClient()
-        connector = AppStoreMockConnector(client, _empty_matcher(), _registry(), mock_dir=tmp_path)
-        # Passing a recent since should not filter the static mock data
+        connector = AppStoreMockConnector(client, _registry(), mock_dir=tmp_path)
         raw = await connector.fetch(since=datetime(2026, 4, 1, tzinfo=UTC))
         assert len(raw) == 1
 
@@ -303,7 +301,6 @@ class TestAppStoreMockConnector:
 # ---------------------------------------------------------------------------
 
 def _make_github_items(n: int) -> list[dict]:
-    """Build n minimal GitHub repo dicts."""
     return [
         {
             "id": 900000 + i,
@@ -323,13 +320,10 @@ def _make_github_items(n: int) -> list[dict]:
 
 class TestGithubConnectorSince:
     async def test_paginates_with_since(self, monkeypatch):
-        """When since is provided, GithubConnector paginates: page 1 full → page 2 requested."""
         monkeypatch.setenv("BACKFILL_MAX_ITEMS_PER_SOURCE", "200")
         from app.config import get_settings
         get_settings.cache_clear()
 
-        # page 1 returns 100 items (full page → connector requests page 2)
-        # page 2 returns 0 items → connector stops
         pages_requested: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -341,7 +335,7 @@ class TestGithubConnectorSince:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = GithubConnector(client, _empty_matcher(), _registry())
+        connector = GithubConnector(client, _registry())
         since = datetime(2026, 1, 1, tzinfo=UTC)
         raw = await connector.fetch(since=since)
         assert "1" in pages_requested
@@ -349,7 +343,6 @@ class TestGithubConnectorSince:
         assert len(raw) == 100
 
     async def test_no_since_single_page(self):
-        """Without since, GithubConnector uses one page (existing behavior)."""
         fixture = Path("tests/fixtures/github_search.json").read_text()
         pages_requested: list[str] = []
 
@@ -359,14 +352,12 @@ class TestGithubConnectorSince:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = GithubConnector(client, _empty_matcher(), _registry())
+        connector = GithubConnector(client, _registry())
         await connector.fetch()
-        # No page param for single-page run
         assert len(pages_requested) == 1
         assert pages_requested[0] == ""
 
     async def test_until_added_to_query(self):
-        """When until is set, GitHub query includes the upper-bound date filter."""
         queries: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -375,7 +366,7 @@ class TestGithubConnectorSince:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = GithubConnector(client, _empty_matcher(), _registry())
+        connector = GithubConnector(client, _registry())
         since = datetime(2026, 1, 1, tzinfo=UTC)
         until = datetime(2026, 1, 8, tzinfo=UTC)
         await connector.fetch(since=since, until=until)
@@ -386,7 +377,6 @@ class TestGithubConnectorSince:
 
 class TestHNConnectorSince:
     async def test_paginates_with_since(self):
-        """When since is provided, HNConnector paginates through Algolia pages."""
         fixture_page0 = {
             "hits": [{"objectID": "1", "title": "h1", "created_at_i": 1700000000}],
             "nbPages": 2,
@@ -406,7 +396,7 @@ class TestHNConnectorSince:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = HNConnector(client, _empty_matcher(), _registry())
+        connector = HNConnector(client, _registry())
         since = datetime(2026, 1, 1, tzinfo=UTC)
         raw = await connector.fetch(since=since)
         assert "0" in pages_requested
@@ -414,7 +404,6 @@ class TestHNConnectorSince:
         assert len(raw) == 2
 
     async def test_no_since_single_page(self):
-        """Without since, HNConnector uses one request with 6h window."""
         fixture = Path("tests/fixtures/hn_search.json").read_text()
         requests_made: list[str] = []
 
@@ -424,19 +413,17 @@ class TestHNConnectorSince:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = HNConnector(client, _empty_matcher(), _registry())
+        connector = HNConnector(client, _registry())
         raw = await connector.fetch()
         assert len(requests_made) == 1
-        # No page param for regular run
         assert "page" not in requests_made[0]
 
 
 class TestRedditConnectorSince:
     async def test_paginates_with_since_until_boundary(self, monkeypatch):
-        """With since, RedditConnector paginates using after-cursor and stops at since."""
         from datetime import timedelta
         now = datetime.now(UTC)
-        old_ts = (now - timedelta(days=35)).timestamp()  # older than since
+        old_ts = (now - timedelta(days=35)).timestamp()
 
         page1 = {
             "data": {
@@ -466,16 +453,13 @@ class TestRedditConnectorSince:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = RedditConnector(client, _empty_matcher(), _registry())
+        connector = RedditConnector(client, _registry())
         since = now - timedelta(days=30)
         raw = await connector.fetch(since=since)
-        # Both pages fetched, stopped after finding item older than since
         assert len(pages) == 2
-        # t3_a is new (included), t3_b is old (included because already fetched)
         assert len(raw) == 2
 
     async def test_no_since_single_page_per_sub(self, monkeypatch):
-        """Without since, RedditConnector uses single-page per sub (existing behavior)."""
         fixture = Path("tests/fixtures/reddit_new.json").read_text()
         requests_made: list[str] = []
 
@@ -489,7 +473,7 @@ class TestRedditConnectorSince:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = RedditConnector(client, _empty_matcher(), _registry())
+        connector = RedditConnector(client, _registry())
         await connector.fetch()
         assert len(requests_made) == 1
         assert "after" not in requests_made[0]
@@ -497,7 +481,6 @@ class TestRedditConnectorSince:
 
 class TestHNConnectorUntil:
     async def test_until_added_to_numeric_filters(self):
-        """When until is set, HN numericFilters includes the upper-bound epoch."""
         filters_seen: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -506,7 +489,7 @@ class TestHNConnectorUntil:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = HNConnector(client, _empty_matcher(), _registry())
+        connector = HNConnector(client, _registry())
         since = datetime(2026, 1, 1, tzinfo=UTC)
         until = datetime(2026, 1, 8, tzinfo=UTC)
         await connector.fetch(since=since, until=until)
@@ -520,26 +503,21 @@ class TestHNConnectorUntil:
 # ---------------------------------------------------------------------------
 
 def test_weekly_windows_30_days():
-    """30-day window should produce 4 full weeks + 1 partial (or 5 windows)."""
     from app.ingestion.backfill import _weekly_windows
     since = datetime(2026, 1, 1, tzinfo=UTC)
-    until = datetime(2026, 1, 31, tzinfo=UTC)  # 30 days
+    until = datetime(2026, 1, 31, tzinfo=UTC)
     windows = _weekly_windows(since, until)
-    assert len(windows) == 5  # 4×7 + 1×2
-    # First window starts at since
+    assert len(windows) == 5
     assert windows[0][0] == since
-    # Last window ends at until
     assert windows[-1][1] == until
-    # No gaps and no overlaps
     for i in range(len(windows) - 1):
         assert windows[i][1] == windows[i + 1][0]
 
 
 def test_weekly_windows_exact_multiple():
-    """14-day window produces exactly 2 full 7-day windows."""
     from app.ingestion.backfill import _weekly_windows
     since = datetime(2026, 1, 1, tzinfo=UTC)
-    until = datetime(2026, 1, 15, tzinfo=UTC)  # 14 days
+    until = datetime(2026, 1, 15, tzinfo=UTC)
     windows = _weekly_windows(since, until)
     assert len(windows) == 2
     assert windows[0] == (since, datetime(2026, 1, 8, tzinfo=UTC))
@@ -547,18 +525,17 @@ def test_weekly_windows_exact_multiple():
 
 
 # ---------------------------------------------------------------------------
-# M6-02 gap-fill: GitHub 4xx, Reddit 1000-item ceiling, AppStore since= no-op
+# GitHub 4xx
 # ---------------------------------------------------------------------------
 
 class TestGithubConnector4xx:
     async def test_403_results_in_error_status(self):
-        """A 403 from GitHub (rate-limit / bad token) marks the run as error, no crash."""
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(403)
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = GithubConnector(client, _empty_matcher(), _registry())
+        connector = GithubConnector(client, _registry())
         status = await connector.run()
         assert status.last_status == "error"
         assert status.error is not None
@@ -566,8 +543,6 @@ class TestGithubConnector4xx:
 
 class TestRedditCeilingLog:
     async def test_1000_item_ceiling_log_fires(self, monkeypatch):
-        """When 1000 items are collected without hitting the since boundary,
-        the 'Reddit sub backfill hit 1000-item ceiling' log line fires."""
         import structlog.testing
         from datetime import timedelta
 
@@ -576,7 +551,6 @@ class TestRedditCeilingLog:
 
         def handler(request: httpx.Request) -> httpx.Response:
             page_count[0] += 1
-            # 10 pages × 100 items = 1000 items total; page 10 has no after cursor.
             children = [
                 {
                     "data": {
@@ -601,7 +575,7 @@ class TestRedditCeilingLog:
 
         transport = httpx.MockTransport(handler)
         client = httpx.AsyncClient(transport=transport)
-        connector = RedditConnector(client, _empty_matcher(), _registry())
+        connector = RedditConnector(client, _registry())
         since = datetime.now(UTC) - timedelta(days=60)
 
         with structlog.testing.capture_logs() as cap:
@@ -613,15 +587,13 @@ class TestRedditCeilingLog:
 
 class TestAppStoreSinceNoOp:
     async def test_since_does_not_filter_mock_data(self, monkeypatch):
-        """Passing a recent since to AppStoreMockConnector returns the same records
-        as calling without since — confirming the mock is always fully loaded."""
         monkeypatch.setenv("ENABLE_MOCK_APPSTORE", "true")
         from app.config import get_settings
         get_settings.cache_clear()
 
         client = httpx.AsyncClient()
         mock_dir = Path("data/mock")
-        connector = AppStoreMockConnector(client, _empty_matcher(), _registry(), mock_dir=mock_dir)
+        connector = AppStoreMockConnector(client, _registry(), mock_dir=mock_dir)
 
         raw_all = await connector.fetch()
         raw_with_since = await connector.fetch(since=datetime(2026, 4, 27, tzinfo=UTC))
