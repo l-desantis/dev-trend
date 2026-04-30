@@ -22,7 +22,7 @@ async def session() -> AsyncSession:
     await engine.dispose()
 
 
-def _make_callback_update(data: str, user_id: int = 42, chat_id: int = 99, brief_id: str = "none") -> MagicMock:
+def _make_callback_update(data: str, user_id: int = 42, chat_id: int = 99) -> MagicMock:
     update = MagicMock()
     query = AsyncMock()
     query.data = data
@@ -31,13 +31,6 @@ def _make_callback_update(data: str, user_id: int = 42, chat_id: int = 99, brief
     query.message.chat_id = chat_id
     query.answer = AsyncMock()
     query.edit_message_reply_markup = AsyncMock()
-
-    # Wire the [📄 details] button so _extract_brief_id_from_message can find it
-    btn_details = MagicMock()
-    btn_details.callback_data = f"view:1:{brief_id}"
-    query.message.reply_markup = MagicMock()
-    query.message.reply_markup.inline_keyboard = [[btn_details]]
-
     update.callback_query = query
     return update
 
@@ -47,7 +40,7 @@ async def test_feedback_inserts_row(session: AsyncSession) -> None:
     session.add(c)
     await session.commit()
 
-    update = _make_callback_update(f"fb:up:{c.id}")
+    update = _make_callback_update(f"fb:up:{c.id}:none")
     ctx = MagicMock()
 
     with patch("app.bot.feedback.get_session") as mock_gs:
@@ -73,10 +66,10 @@ async def test_feedback_flips_on_re_click(session: AsyncSession) -> None:
         mock_gs.return_value.__aenter__ = AsyncMock(return_value=session)
         mock_gs.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        update1 = _make_callback_update(f"fb:up:{c.id}")
+        update1 = _make_callback_update(f"fb:up:{c.id}:none")
         await cmd_feedback_callback(update1, ctx)
 
-        update2 = _make_callback_update(f"fb:down:{c.id}")
+        update2 = _make_callback_update(f"fb:down:{c.id}:none")
         await cmd_feedback_callback(update2, ctx)
 
     result = await session.execute(select(CandidateFeedback))
@@ -96,10 +89,10 @@ async def test_feedback_per_user_independent(session: AsyncSession) -> None:
         mock_gs.return_value.__aenter__ = AsyncMock(return_value=session)
         mock_gs.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        update_a = _make_callback_update(f"fb:up:{c.id}", user_id=1)
+        update_a = _make_callback_update(f"fb:up:{c.id}:none", user_id=1)
         await cmd_feedback_callback(update_a, ctx)
 
-        update_b = _make_callback_update(f"fb:down:{c.id}", user_id=2)
+        update_b = _make_callback_update(f"fb:down:{c.id}:none", user_id=2)
         await cmd_feedback_callback(update_b, ctx)
 
     result = await session.execute(select(CandidateFeedback))
@@ -110,8 +103,31 @@ async def test_feedback_per_user_independent(session: AsyncSession) -> None:
     assert labels[2] == "down"
 
 
+async def test_feedback_multi_card_attributes_correct_brief(session: AsyncSession) -> None:
+    """Clicking candidate #2's button must record #2's brief_id, not #1's."""
+    c1 = OpportunityCandidate(problem_statement="candidate 1", specificity=3)
+    c2 = OpportunityCandidate(problem_statement="candidate 2", specificity=3)
+    session.add_all([c1, c2])
+    await session.commit()
+
+    # Callback data for candidate #2 with brief_id=42 — brief_id comes from the button data
+    update = _make_callback_update(f"fb:up:{c2.id}:42", user_id=7, chat_id=99)
+    ctx = MagicMock()
+
+    with patch("app.bot.feedback.get_session") as mock_gs:
+        mock_gs.return_value.__aenter__ = AsyncMock(return_value=session)
+        mock_gs.return_value.__aexit__ = AsyncMock(return_value=False)
+        await cmd_feedback_callback(update, ctx)
+
+    result = await session.execute(select(CandidateFeedback))
+    rows = result.scalars().all()
+    assert len(rows) == 1
+    assert rows[0].candidate_id == c2.id
+    assert rows[0].brief_id == 42
+
+
 async def test_feedback_unknown_candidate_ignored_gracefully(session: AsyncSession) -> None:
-    update = _make_callback_update("fb:up:99999")
+    update = _make_callback_update("fb:up:99999:none")
     ctx = MagicMock()
 
     with patch("app.bot.feedback.get_session") as mock_gs:

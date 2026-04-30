@@ -221,7 +221,7 @@ class LifecycleEvent(Base):
         Integer, ForeignKey("opportunity_candidates.id"), nullable=False, index=True
     )
     old_state: Mapped[str | None] = mapped_column(String(50))
-    new_state: Mapped[str] = mapped_column(String(50), nullable=False)
+    new_state: Mapped[str | None] = mapped_column(String(50))
     score_total: Mapped[float | None] = mapped_column(Float)
     was_alerted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     recorded_at: Mapped[datetime] = mapped_column(

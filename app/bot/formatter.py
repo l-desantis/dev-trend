@@ -46,7 +46,7 @@ def lifecycle_arrow(state: str | None) -> str:
     return _LIFECYCLE_LABELS.get(state or "", "")
 
 
-def score_breakdown_block(breakdown: dict) -> str:
+def score_breakdown_block(breakdown: dict, score_total: float | None = None) -> str:
     """MarkdownV2-safe score breakdown inside a code fence."""
     if not breakdown:
         return "```\nNo breakdown available.\n```"
@@ -61,10 +61,16 @@ def score_breakdown_block(breakdown: dict) -> str:
     div = breakdown.get("source_diversity", {})
     val = breakdown.get("validation")
     spec = breakdown.get("specificity")
-    total = sum(
-        (breakdown.get(k, {}).get("score", 0) if isinstance(breakdown.get(k), dict) else (breakdown.get(k) or 0)) * w
-        for k, w in (breakdown.get("weights") or {}).items()
-    ) if breakdown.get("weights") else None
+    total: float | None
+    if score_total is not None:
+        total = score_total
+    elif breakdown.get("weights"):
+        total = sum(
+            (breakdown.get(k, {}).get("score", 0) if isinstance(breakdown.get(k), dict) else (breakdown.get(k) or 0)) * w
+            for k, w in breakdown["weights"].items()
+        )
+    else:
+        total = None
 
     rows = [
         _row("Frequency", freq.get("raw"), freq.get("score")),

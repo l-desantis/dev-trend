@@ -233,6 +233,33 @@ async def test_emit_lifecycle_alerts_sorts_by_score(session: AsyncSession) -> No
     assert "score 30" in call_order[0]
 
 
+async def test_fetch_scores_returns_latest_not_peak(session: AsyncSession) -> None:
+    """Candidate with peak 90 yesterday and 50 today must report 50, not 90."""
+    from app.bot.v4_notifications import _fetch_scores_for
+
+    now = datetime.now(UTC)
+    c = OpportunityCandidate(problem_statement="score decay test", specificity=3)
+    session.add(c)
+    await session.flush()
+
+    session.add(CandidateScoreHistory(
+        candidate_id=c.id,
+        score_total=90.0,
+        score_breakdown_json={},
+        scored_at=now - timedelta(days=1),
+    ))
+    session.add(CandidateScoreHistory(
+        candidate_id=c.id,
+        score_total=50.0,
+        score_breakdown_json={},
+        scored_at=now,
+    ))
+    await session.commit()
+
+    scores = await _fetch_scores_for(session, [c.id])
+    assert scores[c.id] == 50.0
+
+
 async def test_emit_lifecycle_alerts_skips_dormant(session: AsyncSession) -> None:
     bot = AsyncMock()
     settings = _settings()

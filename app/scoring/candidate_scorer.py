@@ -53,16 +53,16 @@ async def score_all_candidates(
     if not candidates:
         return []
 
-    # Idempotency: delete existing rows for this as_of date
+    # Idempotency: delete existing rows for this as_of date (single batch)
     as_of_start = datetime(as_of.year, as_of.month, as_of.day, tzinfo=UTC)
     as_of_end = datetime(as_of.year, as_of.month, as_of.day, 23, 59, 59, tzinfo=UTC)
-    for c in candidates:
-        await session.execute(
-            delete(CandidateScoreHistory)
-            .where(CandidateScoreHistory.candidate_id == c.id)
-            .where(CandidateScoreHistory.scored_at >= as_of_start)
-            .where(CandidateScoreHistory.scored_at <= as_of_end)
-        )
+    candidate_ids = [c.id for c in candidates]
+    await session.execute(
+        delete(CandidateScoreHistory)
+        .where(CandidateScoreHistory.candidate_id.in_(candidate_ids))
+        .where(CandidateScoreHistory.scored_at >= as_of_start)
+        .where(CandidateScoreHistory.scored_at <= as_of_end)
+    )
 
     # Compute raw values for normalised dimensions
     freq_raws: dict[int, float] = {}

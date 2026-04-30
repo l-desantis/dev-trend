@@ -129,10 +129,21 @@ async def test_scoring_pipeline_end_to_end(factory, monkeypatch) -> None:
     async with factory() as session:
         transitions = await update_lifecycle_states_and_emit_transitions(session, as_of=as_of)
 
-    # Some transitions should fire (candidates had lifecycle_state='emerging', new scoring
-    # may derive 'hot' for the high-frequency ones or keep them 'emerging')
-    # We don't assert exact count because it depends on score distribution.
+    # All seeded candidates were 'emerging' with age=30d, so re-derive can't return 'emerging'
+    # (age_days >= 14). Every candidate must transition to a different state or None.
+    # At minimum the list is well-formed; each fired transition must have a valid new_state.
     assert isinstance(transitions, list)
+    for t in transitions:
+        assert t.new_state and t.new_state != "", "transition new_state must not be empty"
+        assert t.score_total >= 0
+
+    # All LifecycleEvents that were not alerted must have new_state != '' (I-4 fix)
+    async with factory() as session:
+        from sqlalchemy import func as _func
+        bad = (await session.execute(
+            select(LifecycleEvent).where(LifecycleEvent.new_state == "")
+        )).scalars().all()
+        assert len(bad) == 0, "LifecycleEvent.new_state must never be empty string"
 
     # Step 4: Emit lifecycle alerts (capped at max_alerts_per_day=3)
     async with factory() as session:
@@ -152,6 +163,10 @@ async def test_scoring_pipeline_end_to_end(factory, monkeypatch) -> None:
         # If more transitions than cap, overflow rows exist
         if len(transitions) > settings.max_alerts_per_day:
             assert len(overflow_rows) > 0
+        # Overflow rows must have was_alerted=False (never flipped by mistake)
+        for row in overflow_rows:
+            assert row.was_alerted is False
+            assert row.new_state != "", "overflow LifecycleEvent.new_state must not be empty string"
 
     # Step 6: Digest
     llm = MockLLMAdapter()

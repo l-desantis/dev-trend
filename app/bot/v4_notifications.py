@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
@@ -125,8 +125,8 @@ def build_digest_buttons(
         brief = brief_map.get(c.id)
         brief_id_str = str(brief.id) if brief else "none"
         rows.append([
-            InlineKeyboardButton("👍 useful", callback_data=f"fb:up:{c.id}"),
-            InlineKeyboardButton("👎 not useful", callback_data=f"fb:down:{c.id}"),
+            InlineKeyboardButton("👍 useful", callback_data=f"fb:up:{c.id}:{brief_id_str}"),
+            InlineKeyboardButton("👎 not useful", callback_data=f"fb:down:{c.id}:{brief_id_str}"),
             InlineKeyboardButton("📄 details", callback_data=f"view:{c.id}:{brief_id_str}"),
         ])
     return InlineKeyboardMarkup(rows)
@@ -135,7 +135,7 @@ def build_digest_buttons(
 async def _count_overflow_transitions(session: AsyncSession) -> int:
     since = datetime.now(UTC) - timedelta(hours=24)
     result = await session.execute(
-        select(func.count(LifecycleEvent.id))
+        select(func.count(distinct(LifecycleEvent.candidate_id)))
         .where(LifecycleEvent.recorded_at >= since)
         .where(LifecycleEvent.was_alerted.is_(False))
         .where(LifecycleEvent.new_state.in_(["emerging", "hot", "saturated"]))
@@ -148,15 +148,29 @@ async def _fetch_scores_for(
 ) -> dict[int, float]:
     if not candidate_ids:
         return {}
-    result = await session.execute(
+    latest_at_subq = (
         select(
             CandidateScoreHistory.candidate_id,
-            func.max(CandidateScoreHistory.score_total).label("max_score"),
+            func.max(CandidateScoreHistory.scored_at).label("latest_at"),
         )
         .where(CandidateScoreHistory.candidate_id.in_(candidate_ids))
         .group_by(CandidateScoreHistory.candidate_id)
+        .subquery()
     )
-    return {row.candidate_id: row.max_score for row in result.all()}
+    result = await session.execute(
+        select(
+            CandidateScoreHistory.candidate_id,
+            CandidateScoreHistory.score_total,
+        )
+        .join(
+            latest_at_subq,
+            and_(
+                CandidateScoreHistory.candidate_id == latest_at_subq.c.candidate_id,
+                CandidateScoreHistory.scored_at == latest_at_subq.c.latest_at,
+            )
+        )
+    )
+    return {row.candidate_id: row.score_total for row in result.all()}
 
 
 async def run_digest_job(
@@ -224,15 +238,20 @@ async def emit_lifecycle_alerts(
                     error=str(exc),
                 )
 
-        # Mark lifecycle_event as alerted
-        result = await session.execute(
-            select(LifecycleEvent)
-            .where(LifecycleEvent.candidate_id == transition.candidate_id)
-            .where(LifecycleEvent.new_state == transition.new_state)
-            .where(LifecycleEvent.was_alerted.is_(False))
-            .order_by(LifecycleEvent.recorded_at.desc())
-            .limit(1)
-        )
+        # Mark lifecycle_event as alerted — prefer exact id to avoid races
+        if transition.lifecycle_event_id is not None:
+            result = await session.execute(
+                select(LifecycleEvent).where(LifecycleEvent.id == transition.lifecycle_event_id)
+            )
+        else:
+            result = await session.execute(
+                select(LifecycleEvent)
+                .where(LifecycleEvent.candidate_id == transition.candidate_id)
+                .where(LifecycleEvent.new_state == transition.new_state)
+                .where(LifecycleEvent.was_alerted.is_(False))
+                .order_by(LifecycleEvent.recorded_at.desc())
+                .limit(1)
+            )
         evt = result.scalars().first()
         if evt:
             evt.was_alerted = True
@@ -259,7 +278,7 @@ def _build_alert_text(transition: "LifecycleTransition") -> str:
 def _build_alert_buttons(transition: "LifecycleTransition") -> InlineKeyboardMarkup:
     cid = transition.candidate_id
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("👍 useful", callback_data=f"fb:up:{cid}"),
-        InlineKeyboardButton("👎 not useful", callback_data=f"fb:down:{cid}"),
+        InlineKeyboardButton("👍 useful", callback_data=f"fb:up:{cid}:none"),
+        InlineKeyboardButton("👎 not useful", callback_data=f"fb:down:{cid}:none"),
         InlineKeyboardButton("📄 details", callback_data=f"view:{cid}:none"),
     ]])

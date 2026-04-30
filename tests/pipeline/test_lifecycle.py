@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import (
@@ -128,7 +129,6 @@ async def test_update_emits_transition_only_on_change(session: AsyncSession) -> 
     transitions = await update_lifecycle_states_and_emit_transitions(session, as_of=now)
     assert transitions == []
 
-    from sqlalchemy import select, func
     count = (await session.execute(select(func.count(LifecycleEvent.id)))).scalar_one()
     assert count == 0
 
@@ -165,12 +165,110 @@ async def test_update_emits_transition_on_change(session: AsyncSession) -> None:
     assert transitions[0].old_state == "emerging"
     assert transitions[0].new_state == "hot"
 
-    from sqlalchemy import select, func
     count = (await session.execute(select(func.count(LifecycleEvent.id)))).scalar_one()
     assert count == 1
 
     evt = (await session.execute(select(LifecycleEvent))).scalars().first()
     assert evt.was_alerted is False
+
+
+async def test_none_new_state_never_writes_empty_string(session: AsyncSession) -> None:
+    """When derive returns None from a non-null old_state, LifecycleEvent.new_state is NULL, not ''."""
+    from sqlalchemy import func
+    now = datetime.now(UTC)
+    c = OpportunityCandidate(
+        problem_statement="was hot now uncertain",
+        specificity=3,
+        lifecycle_state="hot",
+        created_at=now - timedelta(days=30),
+        last_evidence_at=now - timedelta(days=1),
+    )
+    session.add(c)
+    await session.flush()
+
+    # momentum=40, frequency=40 — doesn't match any lifecycle state → derive returns None
+    # Keep a strong reference so SQLAlchemy's weak-ref identity map doesn't GC it (which
+    # would cause SQLite to return a naive datetime while candidate.created_at stays aware).
+    score_row = CandidateScoreHistory(
+        candidate_id=c.id,
+        score_total=40.0,
+        score_breakdown_json={
+            "momentum": {"raw": 0.3, "score": 40},
+            "frequency": {"raw": 4, "score": 40},
+            "source_diversity": {"raw": 2, "score": 50},
+            "validation": 50,
+            "specificity": 60,
+        },
+        scored_at=now,
+    )
+    session.add(score_row)
+    await session.commit()
+
+    transitions = await update_lifecycle_states_and_emit_transitions(session, as_of=now)
+
+    # No LifecycleTransition emitted (new_state=None transitions are not alerted)
+    assert len(transitions) == 0
+
+    bad_count = (await session.execute(
+        select(func.count(LifecycleEvent.id)).where(LifecycleEvent.new_state == "")
+    )).scalar_one()
+    assert bad_count == 0
+
+
+async def test_update_reads_recent_history_not_oldest_14(session: AsyncSession) -> None:
+    """Seed 20 daily rows; lifecycle uses today's row on day 20, not the oldest 14."""
+    now = datetime.now(UTC)
+    c = OpportunityCandidate(
+        problem_statement="history depth check",
+        specificity=3,
+        lifecycle_state=None,
+        created_at=now - timedelta(days=30),
+        last_evidence_at=now - timedelta(days=1),
+    )
+    session.add(c)
+    await session.flush()
+
+    # Keep strong refs so SQLAlchemy's weak-ref identity map doesn't GC them between
+    # commit and the next SELECT (which would cause naive vs. aware datetime mismatch).
+    history_rows = []
+
+    # Days 19..1: low scores that derive to None lifecycle state
+    for day_ago in range(19, 0, -1):
+        row = CandidateScoreHistory(
+            candidate_id=c.id,
+            score_total=30.0,
+            score_breakdown_json={
+                "momentum": {"raw": 0.1, "score": 20},
+                "frequency": {"raw": 1, "score": 20},
+                "source_diversity": {"raw": 1, "score": 50},
+                "validation": 50,
+                "specificity": 60,
+            },
+            scored_at=now - timedelta(days=day_ago),
+        )
+        session.add(row)
+        history_rows.append(row)
+
+    # Today: hot scores (momentum >= 60, frequency >= 30)
+    today_row = CandidateScoreHistory(
+        candidate_id=c.id,
+        score_total=85.0,
+        score_breakdown_json={
+            "momentum": {"raw": 0.5, "score": 70},
+            "frequency": {"raw": 8, "score": 40},
+            "source_diversity": {"raw": 3, "score": 60},
+            "validation": 70,
+            "specificity": 60,
+        },
+        scored_at=now,
+    )
+    session.add(today_row)
+    history_rows.append(today_row)
+    await session.commit()
+
+    transitions = await update_lifecycle_states_and_emit_transitions(session, as_of=now)
+    assert len(transitions) == 1
+    assert transitions[0].new_state == "hot"
 
 
 async def test_update_persists_new_state(session: AsyncSession) -> None:

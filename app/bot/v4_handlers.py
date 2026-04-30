@@ -1,7 +1,7 @@
 """v4 bot command handlers: /opportunities, /opportunity, /categories, /category, /emerging."""
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -30,8 +30,8 @@ _MAX_MESSAGE_CHARS = 4096
 def _candidate_inline_buttons(candidate_id: int, brief_id: int | None = None) -> list[list[InlineKeyboardButton]]:
     brief_str = str(brief_id) if brief_id is not None else "none"
     return [[
-        InlineKeyboardButton("👍 useful", callback_data=f"fb:up:{candidate_id}"),
-        InlineKeyboardButton("👎 not useful", callback_data=f"fb:down:{candidate_id}"),
+        InlineKeyboardButton("👍 useful", callback_data=f"fb:up:{candidate_id}:{brief_str}"),
+        InlineKeyboardButton("👎 not useful", callback_data=f"fb:down:{candidate_id}:{brief_str}"),
         InlineKeyboardButton("📄 details", callback_data=f"view:{candidate_id}:{brief_str}"),
     ]]
 
@@ -82,12 +82,26 @@ async def cmd_opportunities(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
             pass
 
     async with get_session() as session:
+        latest_at_subq = (
+            select(
+                CandidateScoreHistory.candidate_id,
+                func.max(CandidateScoreHistory.scored_at).label("latest_at"),
+            )
+            .group_by(CandidateScoreHistory.candidate_id)
+            .subquery()
+        )
         subq = (
             select(
                 CandidateScoreHistory.candidate_id,
-                func.max(CandidateScoreHistory.score_total).label("max_score"),
+                CandidateScoreHistory.score_total.label("latest_score"),
             )
-            .group_by(CandidateScoreHistory.candidate_id)
+            .join(
+                latest_at_subq,
+                and_(
+                    CandidateScoreHistory.candidate_id == latest_at_subq.c.candidate_id,
+                    CandidateScoreHistory.scored_at == latest_at_subq.c.latest_at,
+                )
+            )
             .subquery()
         )
         result = await session.execute(
@@ -95,14 +109,14 @@ async def cmd_opportunities(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
             .join(subq, OpportunityCandidate.id == subq.c.candidate_id)
             .where(OpportunityCandidate.is_archived.is_(False))
             .where(OpportunityCandidate.specificity > settings.specificity_gate)
-            .order_by(subq.c.max_score.desc())
+            .order_by(subq.c.latest_score.desc())
             .limit(n)
         )
         candidates = result.scalars().all()
 
     if not candidates:
         await update.effective_message.reply_text(
-            "No opportunities yet — give the pipeline a few days to warm up\\.",
+            md_escape("No opportunities yet — give the pipeline a few days to warm up."),
             parse_mode="MarkdownV2",
         )
         return
@@ -204,7 +218,7 @@ async def cmd_opportunity(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     lines.append("")
 
     if score and score.score_breakdown_json:
-        lines.append(score_breakdown_block(score.score_breakdown_json))
+        lines.append(score_breakdown_block(score.score_breakdown_json, score.score_total))
         lines.append("")
 
     if validation and validation.metadata_json:
@@ -314,12 +328,26 @@ async def cmd_category(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             )
             return
 
+        latest_at_subq = (
+            select(
+                CandidateScoreHistory.candidate_id,
+                func.max(CandidateScoreHistory.scored_at).label("latest_at"),
+            )
+            .group_by(CandidateScoreHistory.candidate_id)
+            .subquery()
+        )
         subq = (
             select(
                 CandidateScoreHistory.candidate_id,
-                func.max(CandidateScoreHistory.score_total).label("max_score"),
+                CandidateScoreHistory.score_total.label("latest_score"),
             )
-            .group_by(CandidateScoreHistory.candidate_id)
+            .join(
+                latest_at_subq,
+                and_(
+                    CandidateScoreHistory.candidate_id == latest_at_subq.c.candidate_id,
+                    CandidateScoreHistory.scored_at == latest_at_subq.c.latest_at,
+                )
+            )
             .subquery()
         )
         result = await session.execute(
@@ -328,7 +356,7 @@ async def cmd_category(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             .where(OpportunityCandidate.category_id == cat.id)
             .where(OpportunityCandidate.is_archived.is_(False))
             .where(OpportunityCandidate.specificity > settings.specificity_gate)
-            .order_by(subq.c.max_score.desc())
+            .order_by(subq.c.latest_score.desc())
             .limit(_DEFAULT_TOP_N)
         )
         candidates = result.scalars().all()
@@ -367,6 +395,7 @@ async def cmd_emerging(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             .where(OpportunityCandidate.is_archived.is_(False))
             .where(OpportunityCandidate.specificity > settings.specificity_gate)
             .order_by(OpportunityCandidate.created_at.desc())
+            .limit(_DEFAULT_TOP_N)
         )
         candidates = result.scalars().all()
 

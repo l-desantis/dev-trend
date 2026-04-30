@@ -1,7 +1,7 @@
 """Stage 8 — Lifecycle state derivation and transition detection."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from pydantic import BaseModel
@@ -19,6 +19,7 @@ class LifecycleTransition(BaseModel):
     new_state: str
     score_total: float
     problem_statement: str
+    lifecycle_event_id: int | None = None
 
 
 def derive_lifecycle_state(
@@ -85,12 +86,13 @@ async def update_lifecycle_states_and_emit_transitions(
     transitions: list[LifecycleTransition] = []
 
     for candidate in candidates:
-        # Fetch last 14 days of score history, oldest-first
+        # Fetch score history from last 14 days, oldest-first
+        since = as_of - timedelta(days=14)
         history_result = await session.execute(
             select(CandidateScoreHistory)
             .where(CandidateScoreHistory.candidate_id == candidate.id)
+            .where(CandidateScoreHistory.scored_at >= since)
             .order_by(CandidateScoreHistory.scored_at.asc())
-            .limit(14)
         )
         history = history_result.scalars().all()
 
@@ -100,26 +102,40 @@ async def update_lifecycle_states_and_emit_transitions(
         if new_state == old_state:
             continue
 
-        # Record transition
         latest_score = history[-1].score_total if history else 0.0
+        candidate.lifecycle_state = new_state
+
+        if new_state is None:
+            # State dropped to unclassified: record with NULL new_state, no alert
+            session.add(LifecycleEvent(
+                candidate_id=candidate.id,
+                old_state=old_state,
+                new_state=None,
+                score_total=latest_score,
+                was_alerted=False,
+                recorded_at=as_of,
+            ))
+            continue
+
         event = LifecycleEvent(
             candidate_id=candidate.id,
             old_state=old_state,
-            new_state=new_state or "",
+            new_state=new_state,
             score_total=latest_score,
             was_alerted=False,
             recorded_at=as_of,
         )
         session.add(event)
+        await session.flush()
 
-        candidate.lifecycle_state = new_state
         transitions.append(
             LifecycleTransition(
                 candidate_id=candidate.id,
                 old_state=old_state,
-                new_state=new_state or "",
+                new_state=new_state,
                 score_total=latest_score,
                 problem_statement=candidate.problem_statement,
+                lifecycle_event_id=event.id,
             )
         )
 

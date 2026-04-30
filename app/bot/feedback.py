@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import structlog
+from sqlalchemy import and_, select
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -18,28 +19,8 @@ def _replace_with_confirmation(label: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton(text, callback_data="noop")]])
 
 
-def _extract_brief_id_from_message(message) -> int | None:
-    """Read brief_id from the [📄 details] button callback_data: 'view:<cid>:<brief_id>'."""
-    if message is None:
-        return None
-    try:
-        reply_markup = message.reply_markup
-        if reply_markup is None:
-            return None
-        for row in reply_markup.inline_keyboard:
-            for btn in row:
-                data = btn.callback_data or ""
-                if data.startswith("view:"):
-                    parts = data.split(":")
-                    if len(parts) >= 3 and parts[2] not in ("none", ""):
-                        return int(parts[2])
-    except Exception:
-        pass
-    return None
-
-
 async def cmd_feedback_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles 'fb:up:<id>' and 'fb:down:<id>' inline button callbacks."""
+    """Handles 'fb:up:<cid>:<bid>' and 'fb:down:<cid>:<bid>' inline button callbacks."""
     query = update.callback_query
     if query is None:
         return
@@ -48,7 +29,7 @@ async def cmd_feedback_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) 
 
     data = query.data or ""
     parts = data.split(":")
-    if len(parts) != 3 or parts[0] != "fb" or parts[1] not in ("up", "down"):
+    if len(parts) != 4 or parts[0] != "fb" or parts[1] not in ("up", "down"):
         log.warning("invalid_feedback_callback_data", data=data)
         return
 
@@ -58,13 +39,17 @@ async def cmd_feedback_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) 
     except ValueError:
         return
 
+    brief_raw = parts[3]
+    try:
+        brief_id: int | None = None if brief_raw in ("none", "") else int(brief_raw)
+    except ValueError:
+        brief_id = None
+
     user_id = query.from_user.id if query.from_user else 0
     chat_id = query.message.chat_id if query.message else 0
-    brief_id = _extract_brief_id_from_message(query.message)
 
     async with get_session() as session:
         # Verify candidate exists
-        from sqlalchemy import and_, select
         c_result = await session.execute(
             select(OpportunityCandidate).where(OpportunityCandidate.id == candidate_id)
         )

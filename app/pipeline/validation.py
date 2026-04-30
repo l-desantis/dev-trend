@@ -44,7 +44,6 @@ def extract_keywords(problem_statement: str, audience: str | None) -> list[str]:
         if w not in seen:
             seen.add(w)
             unique.append(w)
-    unique.sort(key=len, reverse=True)
     return unique[:5]
 
 
@@ -109,14 +108,20 @@ async def count_show_hn_matches(
     conditions.append(SourceItem.ingested_at >= since)
 
     from sqlalchemy import and_
+    cond = and_(*conditions)
+
+    count_result = await session.execute(
+        select(func.count(SourceItem.id)).where(cond)
+    )
+    count = count_result.scalar_one()
+
     rows = await session.execute(
         select(SourceItem)
-        .where(and_(*conditions))
+        .where(cond)
         .order_by(SourceItem.ingested_at.desc())
         .limit(20)
     )
     items = rows.scalars().all()
-    count = len(items)
 
     top = sorted(
         items,
