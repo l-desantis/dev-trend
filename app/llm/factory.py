@@ -12,7 +12,14 @@ def make_llm_adapter(settings: Settings) -> LLMAdapter:
             from app.llm.mock_adapter import MockLLMAdapter
             return MockLLMAdapter()
         case "nim":
-            raise NotImplementedError("NIM adapter lands in Plan C")
+            if not settings.nim_api_key:
+                raise ValueError("NIM_API_KEY required when LLM_PROVIDER=nim")
+            from app.llm.nim_adapter import NvidiaNimAdapter
+            return NvidiaNimAdapter(
+                api_key=settings.nim_api_key,
+                model=settings.nim_llm_model,
+                base_url=settings.nim_base_url,
+            )
         case _:
             raise ValueError(f"unknown llm_provider: {settings.llm_provider!r}")
 
@@ -26,6 +33,13 @@ def make_embedding_adapter(settings: Settings) -> EmbeddingAdapter:
             from app.llm.mock_embedding_adapter import MockEmbeddingAdapter
             return MockEmbeddingAdapter()
         case "nim":
-            raise NotImplementedError("NIM embedding adapter lands in Plan C")
+            if not settings.nim_api_key:
+                raise ValueError("NIM_API_KEY required when EMBEDDING_PROVIDER=nim")
+            from app.llm.nim_embedding_adapter import NvidiaNimEmbeddingAdapter
+            return NvidiaNimEmbeddingAdapter(
+                api_key=settings.nim_api_key,
+                model=settings.nim_embedding_model,
+                base_url=settings.nim_base_url,
+            )
         case _:
             raise ValueError(f"unknown embedding_provider: {settings.embedding_provider!r}")

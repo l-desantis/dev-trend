@@ -7,60 +7,18 @@ from pydantic import ValidationError
 
 import ollama
 
-from app.agents.prompts import BRIEF_SYSTEM_PROMPT, render_brief_prompt
 from app.llm.base import LLMAdapter
+from app.llm.prompts import (
+    BRIEF_SYSTEM_PROMPT,
+    EXTRACT_PROMPT,
+    LABEL_CLUSTER_PROMPT,
+    render_brief_prompt,
+)
 from app.llm.schemas import ClusterLabel, PainPointDraft
 
 _MIN_REVIEWABLE_CHARS = 50
 
 log = structlog.get_logger(__name__)
-
-EXTRACT_PROMPT = """\
-You analyse a single piece of developer / market chatter and decide whether it
-contains an unmet-need signal that could justify a new app.
-
-Input text:
----
-{text}
----
-
-Return STRICT JSON with these keys:
-- has_unmet_need: boolean
-- problem_text: string (1 sentence, only if has_unmet_need=true; else "")
-- audience: string (1 phrase, only if has_unmet_need=true; else "")
-- urgency_cue: string (e.g. "repeated complaint", "specific deadline", "explicit ask"; "" if none)
-- current_workaround: string ("" if not mentioned)
-
-Examples of HIGH-signal text: complaints, "I wish there was an app that...",
-"why is there no good X", repeated requests in a thread.
-Examples of LOW-signal text: news headlines, tech announcements, marketing posts,
-generic discussion. For these, set has_unmet_need=false and leave the strings
-empty.
-
-Reply with ONLY the JSON object, no prose.\
-"""
-
-LABEL_CLUSTER_PROMPT = """\
-You are labelling a cluster of pain points extracted from developer & user
-chatter. Produce a concrete app-opportunity hypothesis.
-
-Cluster evidence (one item per line):
-{evidence_lines}
-
-Available categories: {categories}
-
-Return STRICT JSON with these keys:
-- problem_statement: 1 sentence describing the opportunity (mid-precision —
-  specific enough to be actionable, broad enough to allow exploration).
-- audience: 1 phrase describing who has the problem.
-- why_now: 1 sentence on what makes this timely (e.g. tech enabler, emerging
-  workflow, repeated recent mention).
-- specificity: integer 1–5. 5 = a concrete app idea with clear scope; 1 = vague,
-  could mean many different products. Be honest — vague clusters get filtered.
-- suggested_category_slug: one of the available categories, or null.
-
-Reply with ONLY the JSON object, no prose.\
-"""
 
 
 class OllamaAdapter(LLMAdapter):
