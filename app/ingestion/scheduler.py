@@ -150,12 +150,106 @@ def build_scheduler(
         misfire_grace_time=3600,
     )
 
+    async def _playstore_ingestion_job() -> None:
+        from app.ingestion.playstore_connector import PlayStoreReviewsConnector
+        import httpx
+        connector = PlayStoreReviewsConnector(
+            client=httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s),
+            registry=registry,
+        )
+        try:
+            await asyncio.wait_for(connector.run(), timeout=settings.ingestion_job_timeout_s * 4)
+        except asyncio.TimeoutError:
+            registry.mark_error("playstore", "job timed out", settings.ingestion_job_timeout_s * 4)
+            log.error("Play Store ingestion job timed out")
+        except Exception as exc:
+            log.error("Play Store ingestion job crashed", error=str(exc))
+
+    scheduler.add_job(
+        _playstore_ingestion_job,
+        CronTrigger(hour=settings.playstore_cron_hour),
+        id="playstore_ingestion",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+
+    async def _playstore_app_discovery_job() -> None:
+        from app.ingestion.playstore_app_discovery import refresh_app_list
+        from app.db import _get_session_factory
+        session_factory = _get_session_factory()
+        try:
+            async with session_factory() as session:
+                count = await refresh_app_list(session)
+                log.info("playstore_app_discovery_complete", upserted=count)
+        except Exception as exc:
+            log.error("Play Store app discovery failed", error=str(exc))
+
+    scheduler.add_job(
+        _playstore_app_discovery_job,
+        CronTrigger(day_of_week="mon", hour=2, minute=30),
+        id="playstore_app_discovery",
+        max_instances=1,
+        coalesce=True,
+    )
+
+    async def _weekly_recluster_job() -> None:
+        from app.pipeline.recluster import run_weekly_recluster
+        from app.llm.factory import make_embedding_adapter
+        from app.db import _get_session_factory
+        session_factory = _get_session_factory()
+        try:
+            async with session_factory() as session:
+                report = await run_weekly_recluster(session)
+                log.info(
+                    "weekly_recluster_done",
+                    merged=report.merged_count,
+                    split=report.split_count,
+                    relabelled=report.relabelled_count,
+                )
+        except Exception as exc:
+            log.error("Weekly re-cluster failed", error=str(exc))
+
+    scheduler.add_job(
+        _weekly_recluster_job,
+        CronTrigger(
+            day_of_week=settings.weekly_recluster_cron_day,
+            hour=settings.weekly_recluster_cron_hour,
+        ),
+        id="weekly_recluster",
+        max_instances=1,
+        coalesce=True,
+    )
+
+    if settings.enable_ios_rss:
+        async def _ios_rss_ingestion_job() -> None:
+            from app.ingestion.ios_rss_connector import IosRssReviewsConnector
+            import httpx
+            connector = IosRssReviewsConnector(
+                client=httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s),
+                registry=registry,
+            )
+            try:
+                await asyncio.wait_for(connector.run(), timeout=settings.ingestion_job_timeout_s * 2)
+            except Exception as exc:
+                log.error("iOS RSS ingestion job crashed", error=str(exc))
+
+        scheduler.add_job(
+            _ios_rss_ingestion_job,
+            CronTrigger(hour=settings.playstore_cron_hour, minute=30),
+            id="ios_rss_ingestion",
+            max_instances=1,
+            coalesce=True,
+        )
+
     log.info(
         "Scheduler built",
         component="scheduler",
         jobs=[
             "github_ingestion", "hn_ingestion", "reddit_ingestion",
-            "daily_pipeline", "daily_scoring", "daily_digest", "weekly_pruning",
+            "playstore_ingestion", "playstore_app_discovery",
+            "daily_pipeline", "daily_scoring", "daily_digest",
+            "weekly_recluster", "weekly_pruning",
         ],
     )
     return scheduler
