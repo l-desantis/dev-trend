@@ -8,11 +8,17 @@
 
 **Architecture:** Plug `google-play-scraper` and an optional iOS RSS connector into the existing `BaseConnector` interface — they extract pain-points just like Reddit. NIM adapters drop into the factory's `nim` branch alongside the Ollama implementations. The weekly re-cluster pass is a new APScheduler cron (Sundays 04:00 UTC) that re-clusters the rolling window and merges/splits candidates using the spec's `merged_into_id` bookkeeping. Decommissioning is a sweep of file deletions + ADR writes + doc archival.
 
-**Tech Stack:** Adds `google-play-scraper` (Python lib, no auth). Adds `httpx` calls to NIM endpoints (httpx already a dependency). No other new packages.
+**Tech Stack:** Adds `google-play-scraper` (Python lib, no auth — **maintenance status verified in C-00**). Adds `httpx` calls to NIM endpoints (httpx already a dependency). No other new packages.
 
 **Spec reference:** `docs/superpowers/specs/2026-04-28-opportunity-discovery-pivot-design.md`
 
 **Depends on:** Plans A & B both complete and merged. The system is already producing candidates and surfacing them via Telegram; Plan C is the last mile.
+
+**Pre-existing state from Plans A/B (do NOT re-add):**
+- `app/config.py` already declares: `nim_api_key`, `nim_embedding_model`, `playstore_top_n_per_category`, `playstore_reviews_per_app`, `weekly_recluster_cron_hour`, `weekly_recluster_cron_day`. C-tasks should *verify* these are present and add only what's missing (e.g., `enable_ios_rss`, `playstore_cron_hour`, `nim_llm_model`, `nim_base_url`).
+- `app/llm/` already contains `openai_adapter.py` and `anthropic_adapter.py` — the factory already routes those. C-07 only needs to add the `nim` branch.
+- `app/llm/prompts.py` does NOT yet exist; v4 prompts still live in `app/agents/prompts.py` (imported by `OllamaAdapter`). C-09 must run before C-10.
+- Models do NOT yet carry `embedding_model` or `merged_into_id` columns — C-06 / C-08 migrations are still needed.
 
 ---
 
@@ -68,29 +74,75 @@ Two design points from spec §4.3 also land in Plan C:
 
 ## Tasks
 
+### C-00 — `google-play-scraper` viability spike (BLOCKING — do this first)
+
+**Files:** `scripts/playstore_spike.py` (kept as a permanent smoke check; re-run on every dependency bump), notes appended to this plan under the "Spike result" subsection below.
+
+**Why this exists:** `google-play-scraper` (Python) is a community port whose last PyPI release is from mid-2023. The Play Store DOM it scrapes has changed multiple times since. Before C-01–C-03 commit us to it, prove that `list()` and `reviews()` still return useful data against the current Play Store. If they don't, we fork or swap before writing connector code.
+
+**Steps:**
+
+1. **Install in a scratch venv** (do NOT add to `pyproject.toml` yet):
+   - `uv run --with google-play-scraper python scripts/playstore_spike.py`
+2. **Spike script does three checks** against well-known apps (e.g., `com.duolingo`, `com.spotify.music`, `com.notion`):
+   - `app(app_id)` — fetch app metadata; assert title + description present.
+   - `reviews(app_id, sort=Sort.NEWEST, count=50, lang='en', country='us')` — assert ≥10 reviews returned, each with non-empty `content`, valid `at` datetime, integer `score`.
+   - `list(category='HEALTH_AND_FITNESS', collection='TOP_FREE', country='us', num=20)` — assert ≥10 apps returned with `appId` + `title`. (Note: the `Collection`/`Category` enums have been historically unstable; try string fallbacks if enums fail.)
+3. **Try the latest version on PyPI** (currently `1.2.7`) AND the current `master` branch on GitHub via `uv add 'google-play-scraper @ git+https://github.com/JoMingyu/google-play-scraper.git@master'`. If `master` works but `1.2.7` doesn't, that's the version to pin.
+4. **Run the spike from a clean US-routed network** if possible (Play Store geo-gates some content; failures from Italy/EU may be false negatives). If the user is on a non-US IP and results look suspicious, note it and rerun later.
+5. **Document outcome inline below this task** in a "Spike result" block: which calls work, which fail, with what error, on which version. Include the raw response shape for `reviews()` so C-03's `_to_raw_item` mapping is correct (the JSON keys in real responses sometimes differ from what's in the README — `userName`/`reviewId`/`at`/`content`/`score`/`thumbsUpCount`/`replyContent`/`replyAt`/`reviewCreatedVersion`).
+
+**Decision gate (do not start C-01 until one of these is chosen):**
+
+| Spike outcome | Path forward |
+|---|---|
+| All three calls work on `1.2.7` | Pin `google-play-scraper==1.2.7` in C-01. Proceed normally. |
+| `master` works, `1.2.7` doesn't | Pin to git ref in C-01: `google-play-scraper @ git+https://github.com/JoMingyu/google-play-scraper.git@<sha>`. Note risk: an unpinned `master` would drift; pin a specific commit SHA. |
+| `reviews()` works but `list()` is broken | Two options. (a) Fork the repo into `<user>/google-play-scraper`, fix `list()`'s selectors, pin the fork. (b) Drop dynamic discovery; seed `data/playstore_seed_apps.yaml` manually with ~50 apps per internal category and turn C-02 into a static-list importer. **Pick (b) for v4** — it's faster and discovery freshness isn't critical at this stage. C-02 reduces to "load YAML → upsert TrackedApp". A weekly *manual* refresh is acceptable. |
+| Both `reviews()` and `list()` are broken | Fork the repo, attempt selector fixes. If selectors are deeply broken, abandon `google-play-scraper` and write a minimal scraper hitting Play Store's internal `batchexecute` endpoint directly (this is what `google-play-scraper` itself does — ~200 LOC if we strip down). Alternatively, defer Play Store entirely to a later milestone and rely on iOS RSS (C-04) + existing Reddit/HN sources. **Surface this to the user before coding either path.** |
+
+**Tests:** none — this task produces a decision document, not code.
+
+**Suggested commit:** `chore(playstore): viability spike for google-play-scraper` — commits the spike script under `scripts/playstore_spike.py` plus the plan update with recorded outcome.
+
+**Spike result:** _(to be filled in by the executor)_
+
+---
+
 ### C-01 — `google-play-scraper` dependency
+
+**Depends on:** C-00 spike result.
 
 **Files:** `pyproject.toml`, lock file regen
 
+Pin per the C-00 decision. Use **exact-version** pinning (not `>=`) because the library's behaviour tracks the Play Store DOM and any auto-bump risks silent breakage:
+
 ```toml
-[project]
-dependencies = [
-    # ... existing
-    "google-play-scraper>=1.2,<2.0",
-]
+# Option A — PyPI pin (if 1.2.7 works in C-00)
+"google-play-scraper==1.2.7",
+
+# Option B — git pin to a specific working commit on master
+"google-play-scraper @ git+https://github.com/JoMingyu/google-play-scraper.git@<commit-sha>",
+
+# Option C — pin to our fork (if C-00 forced a fork)
+"google-play-scraper @ git+https://github.com/<user>/google-play-scraper.git@<branch-or-sha>",
 ```
 
-Have user run `uv sync` and verify the import works in Python: `from google_play_scraper import app, reviews, Sort`.
+If a fork is needed (Option C), the fork should be created *before* this task and its URL recorded in the spike result. Fork policy: branch name `devtrend-fixes`, commit SHA pinned (never track a branch HEAD).
 
-**No tests** — pure dependency add.
+Have user run `uv sync` and verify the import works in Python: `from google_play_scraper import app, reviews, Sort`. Re-run the C-00 spike script with the pinned version to confirm parity.
 
-**Suggested commit:** `chore(deps): add google-play-scraper`
+**No tests** — pure dependency add. The connector tests in C-02/C-03 will use recorded fixtures, not live calls, so test stability is independent of upstream lib drift.
+
+**Suggested commit:** `chore(deps): pin google-play-scraper (<source>@<ref>)`
 
 ---
 
 ### C-02 — Play Store app discovery
 
-**Files:** `app/ingestion/playstore_app_discovery.py`, `data/playstore_seed_apps.yaml` (initial seed; weekly job overwrites), `tests/ingestion/test_playstore_app_discovery.py`
+**Depends on:** C-00 outcome. If C-00 chose path "(b) static seed", this task **collapses to a YAML loader** — replace the `list()` calls below with `yaml.safe_load(open('data/playstore_seed_apps.yaml'))` and an upsert loop. The cron in C-17 still runs weekly but becomes a no-op refresh that re-reads the YAML (lets the user curate without code changes).
+
+**Files:** `app/ingestion/playstore_app_discovery.py`, `data/playstore_seed_apps.yaml` (initial seed; weekly job overwrites in dynamic mode, or *is the source of truth* in static mode), `tests/ingestion/test_playstore_app_discovery.py`
 
 `google-play-scraper` exposes `list()` for top-N apps per category. Map our 6 internal categories to Play Store category IDs:
 
@@ -131,6 +183,8 @@ Add `TrackedApp` to `app/models.py`.
 ---
 
 ### C-03 — Play Store reviews connector
+
+**Depends on:** C-00 outcome confirms `reviews()` works. Use the *exact* response key names recorded in the C-00 spike result (the README is sometimes out of date) when writing `_to_raw_item`.
 
 **Files:** `app/ingestion/playstore_connector.py`, `tests/ingestion/test_playstore_connector.py`
 
@@ -695,7 +749,9 @@ Run `uv run mypy app/` and `uv run ruff check app/ tests/`. Fix anything that's 
 
 ## Definition of Done — Plan C
 
-- [ ] `google-play-scraper` integration ingests reviews from top-N apps per category daily
+- [ ] C-00 spike completed; outcome recorded; `pyproject.toml` pin matches the spike's chosen path (PyPI version / git SHA / fork)
+- [ ] `scripts/playstore_spike.py` retained as smoke check
+- [ ] `google-play-scraper` integration ingests reviews from top-N apps per category daily (or static seed loader if C-00 chose that path)
 - [ ] iOS RSS connector implemented and gated behind `enable_ios_rss` flag
 - [ ] NIM `LLMAdapter` and `EmbeddingAdapter` working; cloud deployment with `LLM_PROVIDER=nim` is feasible
 - [ ] Weekly re-cluster pass runs on schedule; merges/splits work correctly
@@ -712,7 +768,9 @@ Run `uv run mypy app/` and `uv run ruff check app/ tests/`. Fix anything that's 
 
 | Risk | Mitigation |
 |---|---|
-| `google-play-scraper` breaks on Play Store HTML changes | Connector behind same `BaseConnector` interface; failure logs `playstore_likely_throttled` and aborts gracefully. iOS RSS provides fallback signal source. Phase 1.5 can swap in a paid provider via Apptopia / Sensor Tower. |
+| `google-play-scraper` is unmaintained (last release 2023) and may already be partially broken | **C-00 spike runs first** to verify `app()` / `reviews()` / `list()` against the live store. Decision gate forces explicit fork / static-seed / abandon choice before connector code is written. Version is pinned exactly (no `>=`) to prevent silent upstream changes. |
+| `google-play-scraper` breaks *after* C-03 ships (Play Store DOM changes mid-deployment) | Connector behind same `BaseConnector` interface; failure logs `playstore_likely_throttled` and aborts gracefully. iOS RSS (C-04) provides fallback signal source. If we forked in C-00, we own the fix path. Phase 1.5 can swap in a paid provider via Apptopia / Sensor Tower. |
+| Forked `google-play-scraper` falls behind upstream | Fork policy: pin to a specific commit SHA on a named branch (`devtrend-fixes`), never track HEAD. Periodically rebase the fork onto upstream when upstream releases land; bump the pin in `pyproject.toml` as a deliberate dependency update with a re-run of the C-00 spike script (kept around in `scripts/` even after Plan C lands, despite the original "delete after C-03" instruction — promote it to a permanent smoke check). |
 | NIM rate limit on free tier exhausts during heavy daily extraction | Daily-incremental volume is bounded (a few hundred SourceItems/day typically). If hit, expand `extraction_state='no_signal'` short-circuit usage and consider caching at item level. Free-tier exhaustion → fall back to local Ollama via env switch. |
 | Embedding-dim mismatch between Ollama (768) and NIM (1024) | Per-candidate `embedding_model` filter prevents cross-dim matching. Documented; reembedding script is a follow-up if needed. |
 | Re-cluster pass merges legitimate distinct candidates | Threshold 0.88 is conservative; tune via the `merge_threshold` config after watching the system for a few weeks. Merges are reversible: archive flag + `merged_into_id` can be unset manually if needed. |
