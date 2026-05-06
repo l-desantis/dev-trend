@@ -1,0 +1,223 @@
+# Play Store seed app list — source of truth for which apps to track.
+# Curated manually; refresh weekly or when a new category is added.
+# Format: list of {app_id, title, internal_category}
+# internal_category must match a slug in data/categories.yaml
+
+apps:
+  # --- wellness ---
+  - app_id: com.headspace.android
+    title: "Headspace: Mindful Meditation"
+    internal_category: wellness
+
+  - app_id: com.calm.android
+    title: "Calm: Sleep, Meditation"
+    internal_category: wellness
+
+  - app_id: com.noom.android.app
+    title: "Noom: Health & Weight Loss"
+    internal_category: wellness
+
+  - app_id: com.myfitnesspal.android
+    title: "MyFitnessPal: Calorie Counter"
+    internal_category: wellness
+
+  - app_id: com.fitbit.FitbitMobile
+    title: "Fitbit: Health & Fitness"
+    internal_category: wellness
+
+  - app_id: com.whoop.android
+    title: "WHOOP"
+    internal_category: wellness
+
+  - app_id: com.oura.ring.oudroidapp
+    title: "Oura Ring"
+    internal_category: wellness
+
+  - app_id: com.cardiogram.heartratemonitor
+    title: "Heart Rate Monitor - Cardiogram"
+    internal_category: wellness
+
+  - app_id: com.fabulous.android
+    title: "Fabulous: Daily Habit Tracker"
+    internal_category: wellness
+
+  - app_id: com.streaks.app
+    title: "Streaks"
+    internal_category: wellness
+
+  # --- finance ---
+  - app_id: com.ynab.android
+    title: "YNAB (You Need a Budget)"
+    internal_category: finance
+
+  - app_id: com.monarch.android
+    title: "Monarch Money"
+    internal_category: finance
+
+  - app_id: com.copilotmoney.android
+    title: "Copilot Budget & Finance"
+    internal_category: finance
+
+  - app_id: com.acorns.android
+    title: "Acorns: Invest Spare Change"
+    internal_category: finance
+
+  - app_id: com.robinhood.android
+    title: "Robinhood: Investing for All"
+    internal_category: finance
+
+  - app_id: com.coinbase.android
+    title: "Coinbase: Buy Bitcoin & Ether"
+    internal_category: finance
+
+  - app_id: com.wealthfront.android
+    title: "Wealthfront"
+    internal_category: finance
+
+  - app_id: com.personalcapital.android
+    title: "Empower Personal Dashboard"
+    internal_category: finance
+
+  - app_id: com.expensify.expensify
+    title: "Expensify: Expense Tracker"
+    internal_category: finance
+
+  - app_id: com.splitwise.splitwisedroidapp
+    title: "Splitwise: Split Expenses"
+    internal_category: finance
+
+  # --- devtools ---
+  - app_id: com.github.android
+    title: "GitHub"
+    internal_category: devtools
+
+  - app_id: com.jetbrains.android
+    title: "JetBrains Toolbox"
+    internal_category: devtools
+
+  - app_id: com.termux
+    title: "Termux"
+    internal_category: devtools
+
+  - app_id: com.jcraft.android.ssh
+    title: "JuiceSSH - SSH Client"
+    internal_category: devtools
+
+  - app_id: com.postman.app
+    title: "Postman"
+    internal_category: devtools
+
+  - app_id: com.sololearn
+    title: "SoloLearn: Learn to Code"
+    internal_category: devtools
+
+  - app_id: com.mimo.android
+    title: "Mimo: Learn to Code"
+    internal_category: devtools
+
+  - app_id: com.grasshopper.android
+    title: "Grasshopper: Learn to Code"
+    internal_category: devtools
+
+  # --- productivity ---
+  - app_id: com.notion.id
+    title: "Notion — Notes, Docs, Tasks"
+    internal_category: productivity
+
+  - app_id: com.todoist.android.Todoist
+    title: "Todoist: To-Do List & Tasks"
+    internal_category: productivity
+
+  - app_id: com.things3.android
+    title: "Things 3"
+    internal_category: productivity
+
+  - app_id: com.obsidian.md
+    title: "Obsidian"
+    internal_category: productivity
+
+  - app_id: com.roamresearch.android
+    title: "Roam Research"
+    internal_category: productivity
+
+  - app_id: com.linear.app
+    title: "Linear"
+    internal_category: productivity
+
+  - app_id: com.clickup.tasks
+    title: "ClickUp: Tasks & Projects"
+    internal_category: productivity
+
+  - app_id: com.asana.android
+    title: "Asana: Work in One Place"
+    internal_category: productivity
+
+  - app_id: com.monday.crm
+    title: "monday.com Work Management"
+    internal_category: productivity
+
+  - app_id: com.bear.android
+    title: "Bear - Markdown Notes"
+    internal_category: productivity
+
+  # --- creative ---
+  - app_id: com.adobe.Photoshop
+    title: "Adobe Photoshop"
+    internal_category: creative
+
+  - app_id: com.adobe.Lightroom
+    title: "Adobe Lightroom Photo Editor"
+    internal_category: creative
+
+  - app_id: com.procreate.android
+    title: "Procreate Pocket"
+    internal_category: creative
+
+  - app_id: com.canva.editor
+    title: "Canva: Design, Photo & Video"
+    internal_category: creative
+
+  - app_id: com.luma.ai.android
+    title: "Luma AI"
+    internal_category: creative
+
+  - app_id: com.midjourney.android
+    title: "Midjourney"
+    internal_category: creative
+
+  - app_id: com.capcut.editor
+    title: "CapCut - Video Editor"
+    internal_category: creative
+
+  - app_id: com.picsart.studio
+    title: "Picsart: Photo & Video Edit"
+    internal_category: creative
+
+  # --- gaming ---
+  - app_id: com.innersloth.impostor
+    title: "Among Us!"
+    internal_category: gaming
+
+  - app_id: com.supercell.clashofclans
+    title: "Clash of Clans"
+    internal_category: gaming
+
+  - app_id: com.mojang.minecraftpe
+    title: "Minecraft"
+    internal_category: gaming
+
+  - app_id: com.roblox.client
+    title: "Roblox"
+    internal_category: gaming
+
+  - app_id: com.epicgames.fortnite
+    title: "Fortnite"
+    internal_category: gaming
+
+  - app_id: com.scopely.monopolygo
+    title: "Monopoly Go!"
+    internal_category: gaming
+
+  - app_id: com.tencent.ig
+    title: "PUBG MOBILE"
+    internal_category: gaming
