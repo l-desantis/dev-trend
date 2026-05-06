@@ -40,21 +40,35 @@ async def run_extraction(
         .where(SourceItem.extraction_state == "pending")
     )
     if since is not None:
-        query = query.where(SourceItem.ingested_at >= since)
+        # Strip timezone — ingested_at is stored as naive UTC in SQLite
+        since_naive = since.replace(tzinfo=None) if since.tzinfo is not None else since
+        query = query.where(SourceItem.ingested_at >= since_naive)
 
     rows = (await session.execute(query)).scalars().all()
+    log.info("extraction_start", total_rows=len(rows), model=llm.model_name)
+
+    items_since_commit = 0
 
     for item in rows:
         # Idempotency: skip if already extracted with this model (unless force)
         if not force:
-            existing = (
-                await session.execute(
-                    select(PainPoint)
-                    .where(PainPoint.source_item_id == item.id)
-                    .where(PainPoint.extractor_model == llm.model_name)
-                    .limit(1)
+            try:
+                existing = (
+                    await session.execute(
+                        select(PainPoint)
+                        .where(PainPoint.source_item_id == item.id)
+                        .where(PainPoint.extractor_model == llm.model_name)
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+            except Exception as exc:
+                log.error(
+                    "idempotency_check_failed",
+                    source_item_id=item.id,
+                    error=str(exc),
+                    exc_type=type(exc).__name__,
                 )
-            ).scalar_one_or_none()
+                raise
             if existing is not None:
                 continue
 
@@ -67,28 +81,34 @@ async def run_extraction(
             log.warning("extract_failed", source_item_id=item.id, error=str(exc))
             item.extraction_state = "failed"
             report.failed += 1
-            continue
-
-        if not draft.has_unmet_need:
-            item.extraction_state = "no_signal"
-            report.no_signal += 1
         else:
-            pp = PainPoint(
-                source_item_id=item.id,
-                extractor_model=llm.model_name,
-                problem_text=draft.problem_text,
-                audience=draft.audience,
-                urgency_cue=draft.urgency_cue,
-                current_workaround=draft.current_workaround,
+            if not draft.has_unmet_need:
+                item.extraction_state = "no_signal"
+                report.no_signal += 1
+            else:
+                pp = PainPoint(
+                    source_item_id=item.id,
+                    extractor_model=llm.model_name,
+                    problem_text=draft.problem_text,
+                    audience=draft.audience,
+                    urgency_cue=draft.urgency_cue,
+                    current_workaround=draft.current_workaround,
+                )
+                session.add(pp)
+                item.extraction_state = "extracted"
+                report.painpoints_created += 1
+
+        items_since_commit += 1
+        if items_since_commit >= batch_size:
+            await session.commit()
+            log.debug(
+                "extraction_checkpoint",
+                processed_so_far=report.processed,
+                painpoints_so_far=report.painpoints_created,
             )
-            session.add(pp)
-            item.extraction_state = "extracted"
-            report.painpoints_created += 1
+            items_since_commit = 0
 
     await session.commit()
     report.duration_ms = int((time.monotonic() - start) * 1000)
-    log.info(
-        "extraction_complete",
-        **{k: v for k, v in report.__dict__.items()},
-    )
+    log.info("extraction_complete", **{k: v for k, v in report.__dict__.items()})
     return report
