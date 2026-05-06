@@ -37,3 +37,38 @@ def test_scheduler_registers_v4b_jobs() -> None:
 
     # v3 jobs must be gone
     assert "daily_brief_generation" not in job_ids
+
+
+def test_scheduler_v4c_jobs_registered() -> None:
+    client = httpx.AsyncClient()
+    registry = ConnectorRunRegistry()
+    connectors = [
+        GithubConnector(client, registry),
+        HNConnector(client, registry),
+        RedditConnector(client, registry),
+    ]
+    settings = _settings()
+    scheduler = build_scheduler(connectors, registry, settings)
+
+    job_ids = {job.id for job in scheduler.get_jobs()}
+
+    assert "playstore_ingestion" in job_ids
+    assert "playstore_app_discovery" in job_ids
+    assert "weekly_recluster" in job_ids
+    # iOS RSS disabled by default
+    assert "ios_rss_ingestion" not in job_ids
+
+
+def test_scheduler_ios_rss_registered_when_enabled() -> None:
+    client = httpx.AsyncClient()
+    registry = ConnectorRunRegistry()
+    connectors = [
+        GithubConnector(client, registry),
+        HNConnector(client, registry),
+        RedditConnector(client, registry),
+    ]
+    settings = Settings(_env_file=None, enable_ios_rss=True)  # type: ignore[call-arg]
+    scheduler = build_scheduler(connectors, registry, settings)
+
+    job_ids = {job.id for job in scheduler.get_jobs()}
+    assert "ios_rss_ingestion" in job_ids

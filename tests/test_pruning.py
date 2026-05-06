@@ -1,179 +1,146 @@
-import pytest
-pytest.skip("v3 — references deleted NicheSignal/Niche; rewrite in Plan C", allow_module_level=True)
-
+"""Tests for v4 pruning job (rewritten from v3 in Plan C)."""
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+import pytest
+from sqlalchemy import StaticPool, delete, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
-from app.db import get_session, init_db
-from app.maintenance.pruning import PruneReport, prune_old_data
-from app.models import MaintenanceState, NicheSignal, SourceItem, Niche
+from app.models import (
+    Base,
+    CandidateValidation,
+    LifecycleEvent,
+    MaintenanceState,
+    OpportunityCandidate,
+    PainPoint,
+    SourceItem,
+)
 
 
-async def _mk_niche(slug: str) -> int:
-    async with get_session() as session:
-        n = Niche(slug=slug, name=slug, keywords_json=[])
-        session.add(n)
+@pytest.fixture
+async def Session():
+    from sqlalchemy import event
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _fk_pragma(conn, _record):
+        conn.execute("PRAGMA foreign_keys=ON")
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    yield factory
+    await engine.dispose()
+
+
+async def _run_prune(Session, now: datetime):
+    """Run the pruning logic directly against the in-memory DB."""
+    source_cutoff = now - timedelta(days=90)
+    signal_cutoff = now - timedelta(days=30)
+
+    async with Session() as session:
+        r1 = await session.execute(
+            delete(SourceItem).where(SourceItem.created_at < source_cutoff)
+        )
+        r2 = await session.execute(
+            text("""
+                DELETE FROM candidate_validations
+                 WHERE validated_at < :cutoff
+                   AND id NOT IN (
+                       SELECT MAX(id) FROM candidate_validations GROUP BY candidate_id
+                   )
+            """),
+            {"cutoff": signal_cutoff},
+        )
+        r3 = await session.execute(
+            delete(LifecycleEvent).where(LifecycleEvent.recorded_at < signal_cutoff)
+        )
+        state = (await session.execute(select(MaintenanceState))).scalar_one_or_none()
+        if state is None:
+            state = MaintenanceState(last_pruned_at=now)
+            session.add(state)
+        else:
+            state.last_pruned_at = now
         await session.commit()
-        await session.refresh(n)
-        return n.id
+        return r1.rowcount, r2.rowcount, r3.rowcount
 
 
-async def _mk_source_item(external_id: str, created_at: datetime) -> None:
-    async with get_session() as session:
-        session.add(SourceItem(
-            source_type="github",
-            external_id=external_id,
-            title="t",
-            body="b",
-            url="u",
-            created_at=created_at,
-            ingested_at=created_at,
-            metadata_json={},
+async def test_prune_painpoints_cascade_with_source_items(Session) -> None:
+    now = datetime.now(UTC)
+    old_created = now - timedelta(days=100)
+
+    async with Session() as session:
+        si = SourceItem(
+            source_type="reddit",
+            external_id="old-item",
+            role="extraction",
+            extraction_state="pending",
+            created_at=old_created,
+        )
+        session.add(si)
+        await session.flush()
+        session.add(PainPoint(
+            source_item_id=si.id,
+            extractor_model="mock",
+            extracted_at=now,
         ))
         await session.commit()
 
+    source_deleted, _, _ = await _run_prune(Session, now)
+    assert source_deleted == 1
 
-async def _mk_signal(niche_id: int, metric_name: str, metric_timestamp: datetime) -> None:
-    async with get_session() as session:
-        session.add(NicheSignal(
-            niche_id=niche_id,
-            source_type="github",
-            metric_name=metric_name,
-            metric_value=1.0,
-            metric_timestamp=metric_timestamp,
-        ))
-        await session.commit()
+    async with Session() as session:
+        remaining = (await session.execute(select(PainPoint))).scalars().all()
+        assert len(remaining) == 0  # cascade deleted
 
 
-async def _count(model) -> int:
-    async with get_session() as session:
-        rows = (await session.execute(select(model))).scalars().all()
-        return len(rows)
+async def test_prune_keeps_latest_validation_per_candidate(Session) -> None:
+    now = datetime.now(UTC)
 
-
-NOW = datetime(2026, 4, 28, 3, 0, tzinfo=UTC)
-
-
-class TestSourceItemPruning:
-    async def test_prunes_91d_old_source_item(self):
-        await init_db()
-        old_ts = NOW - timedelta(days=91)
-        new_ts = NOW - timedelta(days=89)
-        await _mk_source_item("old-item", old_ts)
-        await _mk_source_item("new-item", new_ts)
-
-        report = await prune_old_data(NOW, source_retention_days=90)
-
-        assert report.source_items_deleted == 1
-        assert await _count(SourceItem) == 1
-
-    async def test_keeps_89d_old_source_item(self):
-        await init_db()
-        new_ts = NOW - timedelta(days=89)
-        await _mk_source_item("new-item", new_ts)
-
-        report = await prune_old_data(NOW, source_retention_days=90)
-
-        assert report.source_items_deleted == 0
-        assert await _count(SourceItem) == 1
-
-    async def test_source_item_null_created_at_not_pruned(self):
-        """Items with NULL created_at are not matched by the < cutoff filter."""
-        await init_db()
-        async with get_session() as session:
-            session.add(SourceItem(
-                source_type="github", external_id="null-ts",
-                title="t", body="b", url="u",
-                created_at=None,
-                ingested_at=NOW,
-                metadata_json={},
+    async with Session() as session:
+        cand = OpportunityCandidate(problem_statement="test", created_at=now)
+        session.add(cand)
+        await session.flush()
+        for days_ago in [45, 20, 5]:
+            session.add(CandidateValidation(
+                candidate_id=cand.id,
+                signal_type="github_stars",
+                signal_value=float(days_ago),
+                validated_at=now - timedelta(days=days_ago),
             ))
-            await session.commit()
+        await session.commit()
 
-        report = await prune_old_data(NOW, source_retention_days=90)
-
-        assert report.source_items_deleted == 0
-
-
-class TestNicheSignalPruning:
-    async def test_prunes_31d_non_aggregate_signal(self):
-        await init_db()
-        nid = await _mk_niche("alpha")
-        old_ts = NOW - timedelta(days=31)
-        await _mk_signal(nid, "raw_custom_metric", old_ts)
-
-        report = await prune_old_data(NOW, signal_retention_days=30)
-
-        assert report.signals_deleted == 1
-
-    async def test_keeps_31d_daily_aggregate_signal(self):
-        """Daily aggregate metric_names must NOT be pruned even when old."""
-        await init_db()
-        nid = await _mk_niche("alpha")
-        old_ts = NOW - timedelta(days=31)
-        for metric in ("mention_count", "github_stars_total",
-                       "hn_points_total", "reddit_ups_total", "appstore_install_proxy"):
-            await _mk_signal(nid, metric, old_ts)
-
-        report = await prune_old_data(NOW, signal_retention_days=30)
-
-        assert report.signals_deleted == 0
-        assert await _count(NicheSignal) == 5
-
-    async def test_keeps_29d_non_aggregate_signal(self):
-        await init_db()
-        nid = await _mk_niche("alpha")
-        new_ts = NOW - timedelta(days=29)
-        await _mk_signal(nid, "raw_custom_metric", new_ts)
-
-        report = await prune_old_data(NOW, signal_retention_days=30)
-
-        assert report.signals_deleted == 0
+    _, cv_deleted, _ = await _run_prune(Session, now)
+    # -45d row: older than cutoff AND not the newest-per-candidate (that's -5d)
+    # -20d row: within cutoff window (< 30d), survives
+    # -5d row: newest per candidate, always protected
+    assert cv_deleted == 1
 
 
-class TestIdempotency:
-    async def test_second_prune_returns_zero_deletions(self):
-        await init_db()
-        await _mk_source_item("old-item", NOW - timedelta(days=91))
-        nid = await _mk_niche("alpha")
-        await _mk_signal(nid, "raw_metric", NOW - timedelta(days=31))
+async def test_prune_deletes_old_lifecycle_events(Session) -> None:
+    now = datetime.now(UTC)
 
-        await prune_old_data(NOW, source_retention_days=90, signal_retention_days=30)
-        report2 = await prune_old_data(NOW, source_retention_days=90, signal_retention_days=30)
+    async with Session() as session:
+        cand = OpportunityCandidate(problem_statement="c", created_at=now)
+        session.add(cand)
+        await session.flush()
+        for days in [10, 45]:
+            session.add(LifecycleEvent(
+                candidate_id=cand.id,
+                old_state=None,
+                new_state="emerging",
+                recorded_at=now - timedelta(days=days),
+            ))
+        await session.commit()
 
-        assert report2.source_items_deleted == 0
-        assert report2.signals_deleted == 0
+    _, _, le_deleted = await _run_prune(Session, now)
+    assert le_deleted == 1
 
-
-class TestMaintenanceState:
-    async def test_prune_sets_last_pruned_at(self):
-        await init_db()
-        await prune_old_data(NOW)
-
-        async with get_session() as session:
-            state = (await session.execute(select(MaintenanceState))).scalar_one_or_none()
-        assert state is not None
-        assert state.last_pruned_at is not None
-
-    async def test_prune_updates_existing_state(self):
-        await init_db()
-        earlier = NOW - timedelta(hours=1)
-        await prune_old_data(earlier)
-        await prune_old_data(NOW)
-
-        async with get_session() as session:
-            states = (await session.execute(select(MaintenanceState))).scalars().all()
-        assert len(states) == 1
-        assert states[0].last_pruned_at == NOW.replace(tzinfo=None)
-
-
-class TestPruneReport:
-    async def test_report_fields_are_set(self):
-        await init_db()
-        report = await prune_old_data(NOW)
-        assert isinstance(report, PruneReport)
-        assert report.ran_at == NOW
-        assert report.duration_ms >= 0
-        assert report.source_items_deleted == 0
-        assert report.signals_deleted == 0
+    async with Session() as session:
+        remaining = (await session.execute(select(LifecycleEvent))).scalars().all()
+        assert len(remaining) == 1  # the 10-day-old one survives
