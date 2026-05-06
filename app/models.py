@@ -81,6 +81,7 @@ class PainPoint(Base):
     urgency_cue: Mapped[str | None] = mapped_column(String(200))
     current_workaround: Mapped[str | None] = mapped_column(Text)
     embedding: Mapped[Any | None] = mapped_column(JSON(none_as_null=True))  # list[float]
+    embedding_model: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
     extracted_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True
     )
@@ -108,6 +109,10 @@ class OpportunityCandidate(Base):
     # NULL = unlabelled sentinel; set to model name after labelling
     labeller_model: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     centroid: Mapped[Any | None] = mapped_column(JSON(none_as_null=True))  # list[float]
+    embedding_model: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
+    merged_into_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("opportunity_candidates.id"), nullable=True
+    )
     last_evidence_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(UTC)
@@ -230,6 +235,22 @@ class LifecycleEvent(Base):
 
     def __repr__(self) -> str:
         return f"<LifecycleEvent candidate_id={self.candidate_id} {self.old_state!r}→{self.new_state!r}>"
+
+
+class TrackedApp(Base):
+    """Play Store (and optionally iOS) apps we track for review ingestion."""
+    __tablename__ = "tracked_apps"
+
+    app_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    internal_category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    ios_app_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    def __repr__(self) -> str:
+        return f"<TrackedApp app_id={self.app_id!r} category={self.internal_category!r}>"
 
 
 class MaintenanceState(Base):
