@@ -20,6 +20,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--llm-provider", default=None, choices=["ollama", "mock", "nim"])
     parser.add_argument("--embedding-provider", default=None, choices=["ollama", "mock", "nim"])
     parser.add_argument("--db-url", default=None)
+    parser.add_argument("--max-extraction-items", type=int, default=None, metavar="N",
+                        help="Cap LLM extraction to the first N source items (useful for testing)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show DEBUG-level logs")
     return parser.parse_args(argv)
 
@@ -130,7 +132,9 @@ async def _run(args: argparse.Namespace) -> None:
     try:
         t_backfill = time.monotonic()
         report = await bulk_backfill(
-            connectors, llm, embedder, settings, history_days=args.history_days
+            connectors, llm, embedder, settings,
+            history_days=args.history_days,
+            extraction_limit=args.max_extraction_items,
         )
         elapsed_backfill = time.monotonic() - t_backfill
         log.info("bulk_backfill finished in %.1fs", elapsed_backfill)

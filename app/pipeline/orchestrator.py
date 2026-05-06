@@ -35,6 +35,7 @@ async def run_pipeline(
     settings: Settings,
     *,
     since: datetime | None = None,
+    extraction_limit: int | None = None,
 ) -> PipelineReport:
     """Run all 5 pipeline stages sequentially. Each stage uses its own session."""
     report = PipelineReport()
@@ -47,6 +48,7 @@ async def run_pipeline(
             session, llm,
             since=since,
             batch_size=settings.extraction_batch_size,
+            limit=extraction_limit,
         )
 
     async with session_factory() as session:

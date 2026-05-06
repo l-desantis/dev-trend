@@ -61,6 +61,7 @@ async def bulk_backfill(
     embedder: EmbeddingAdapter,
     settings: Settings,
     history_days: int = 30,
+    extraction_limit: int | None = None,
 ) -> BackfillReport:
     """One-shot bulk backfill: fetch → v4 pipeline.
 
@@ -118,7 +119,7 @@ async def bulk_backfill(
         from app.db import _get_session_factory
         from app.pipeline.orchestrator import run_pipeline
         session_factory = _get_session_factory()
-        pipeline_report = await run_pipeline(session_factory, llm, embedder, settings, since=since)
+        pipeline_report = await run_pipeline(session_factory, llm, embedder, settings, since=since, extraction_limit=extraction_limit)
         if pipeline_report.extraction:
             report.painpoints_created = pipeline_report.extraction.painpoints_created
         if pipeline_report.clustering:

@@ -29,6 +29,7 @@ async def run_extraction(
     since: datetime | None = None,
     force: bool = False,
     batch_size: int = 20,
+    limit: int | None = None,
 ) -> ExtractionReport:
     """Stage 1: extract pain points from pending SourceItems with role='extraction'."""
     start = time.monotonic()
@@ -45,6 +46,8 @@ async def run_extraction(
         query = query.where(SourceItem.ingested_at >= since_naive)
 
     rows = (await session.execute(query)).scalars().all()
+    if limit is not None:
+        rows = rows[:limit]
     log.info("extraction_start", total_rows=len(rows), model=llm.model_name)
 
     items_since_commit = 0
