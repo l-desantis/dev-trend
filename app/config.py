@@ -63,8 +63,6 @@ class Settings(BaseSettings):
     reddit_client_id: str = ""
     reddit_client_secret: str = ""
     reddit_user_agent: str = "DevTrend/1.0 (by /u/yourhandle)"
-    enable_mock_appstore: bool = True
-
     # Ingestion behavior
     reddit_subreddits: list[str] = [
         "startups", "SideProject", "Entrepreneur",
@@ -115,8 +113,15 @@ class Settings(BaseSettings):
 
     # NIM (NVIDIA)
     nim_api_key: str = ""
+    nim_base_url: str = "https://integrate.api.nvidia.com/v1"
     nim_llm_model: str = "meta/llama-3.1-70b-instruct"
     nim_embedding_model: str = "nvidia/nv-embedqa-e5-v5"
+
+    # Play Store
+    playstore_cron_hour: int = 2
+
+    # iOS RSS (optional)
+    enable_ios_rss: bool = False
 
     # v4 pipeline settings
     extraction_batch_size: int = 20
