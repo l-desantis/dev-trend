@@ -1,5 +1,6 @@
 """Stage 3 — identity resolution: attach PainPoints to existing candidates."""
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -30,7 +31,7 @@ async def run_identity_resolution(
     start = time.monotonic()
     report = IdentityResolutionReport()
 
-    # Load active candidates with a centroid
+    # Load active candidates with a centroid, grouped by embedding_model
     candidates = (
         await session.execute(
             select(OpportunityCandidate)
@@ -43,10 +44,12 @@ async def run_identity_resolution(
         report.duration_ms = int((time.monotonic() - start) * 1000)
         return report
 
-    index = EmbeddingIndex(
-        ids=[c.id for c in candidates],
-        vectors=[c.centroid for c in candidates],
-    )
+    # Build per-model indexes to prevent cross-dim matching
+    from collections import defaultdict
+    candidates_by_model: dict[str | None, list[OpportunityCandidate]] = defaultdict(list)
+    for c in candidates:
+        candidates_by_model[c.embedding_model].append(c)
+
     candidate_map = {c.id: c for c in candidates}
 
     # Load unattached PainPoints with embeddings
@@ -63,6 +66,13 @@ async def run_identity_resolution(
 
     for pp in unattached:
         report.unattached_checked += 1
+        model_candidates = candidates_by_model.get(pp.embedding_model, [])
+        if not model_candidates:
+            continue
+        index = EmbeddingIndex(
+            ids=[c.id for c in model_candidates],
+            vectors=[c.centroid for c in model_candidates],
+        )
         results = index.nearest(pp.embedding, k=1, threshold=threshold)
         if not results:
             continue
