@@ -2,43 +2,41 @@
 
 ---
 
-## Phase 1 — Core MVP (current)
+## v4 — Opportunity Discovery (current)
 
-**Goal:** end-to-end pipeline: ingest → score → brief → Telegram.
+**Goal:** Reframe DevTrend from "trending niche tracker" to "opportunity discovery engine." Mid-precision app hypotheses, persistent candidates, GitHub-as-validator, Play Store reviews as primary extraction source.
 
-**Sources:** GitHub, Hacker News, Reddit, App Store mock (four connectors).
-**Forecasting:** Rolling 7-day slope for Growth dimension.
-**Scoring:** Three dimensions — Growth 0.41 / Demand 0.35 / Novelty 0.24.
-**Interface:** Telegram bot with 7 commands + daily digest + daily spike alert.
+| Plan | Focus | Status |
+|---|---|---|
+| v4.A | Foundation & Pipeline Core | ✅ Complete |
+| v4.B | Scoring, Lifecycle, Bot UX, Feedback | ✅ Complete |
+| v4.C | Play Store, NIM, Re-cluster, v3 Decommissioning | ✅ Complete |
 
-### Milestones
+See `docs/superpowers/specs/2026-04-28-opportunity-discovery-pivot-design.md` for full design.
 
-| Milestone | Focus |
-|---|---|
-| M1 — Foundation | FastAPI, SQLite, bot /start + /help, ADRs, gitignore, MockLLMAdapter |
-| M2 — Ingestion | Four connectors, niches.yaml taxonomy, APScheduler |
-| M3 — Scoring | Rolling slope, percentile normalisation, NicheScoreHistory |
-| M4 — Agent Graph | LangGraph five-node pipeline, Ollama (qwen2.5), brief persistence |
-| M5 — Full Bot | All seven commands, daily digest, spike alert, allowlist middleware |
-| M6 — Hardening | Full test suite, pruning job, replay harness, docs complete |
+---
 
-**Definition of Done:** see §18 of `devtrend-project-document.md`.
+## Phase 1 — Core MVP (v1–v3) ⬛ Superseded by v4
+
+Phase 1 (milestones M1–M6) delivered a working niche-scoring system and Telegram bot. It has been superseded by v4, which replaces the niche taxonomy approach with emergent candidate discovery.
+
+Historical project document: `docs/archive/v3/devtrend-project-document-v3.md`.
 
 ---
 
 ## Phase 1.5 — Signal Expansion
 
-**Goal:** fill in deferred sources and forecasting; reintroduce the Competition dimension.
+**Goal:** fill in deferred sources; improve extraction coverage.
 
-**Trigger:** Phase 1 ships and is stable (all M6 checklist items green).
+**Trigger:** v4 stable (all Plan C checklist items green) and ≥30 days of real candidate history available.
 
 ### Items
 
-- **Google Trends connector** — use the official Google Trends API (alpha). Adds search-interest velocity as a signal for the Demand dimension.
-- **Stack Overflow connector** — Stack Exchange API, tag question volumes and growth rate proxies. Adds developer-adoption signal.
-- **Prophet forecasting** — revisit when ≥30 days of real NicheSignal history is available. Replace the rolling-slope Growth computation; weights to be re-tuned on real data.
-- **Competition dimension** — reintroduce when a real app-store data provider is integrated. New formula: `(growth × w1) + (demand × w2) + (novelty × w3) − (competition × w4)`. Weights TBD after calibration.
-- **Reddit User-Agent policy review** — confirm UA string is compliant and requests are not being rate-limited.
+- **Stack Overflow connector** — Stack Exchange API, tag question volumes. Extraction-flavoured source.
+- **Google Trends connector** — search-interest velocity as Demand-dimension signal.
+- **Per-prompt regression CI gate** — fixture set for "should-extract" / "should-skip" items, run on every prompt change to catch extraction regressions early.
+- **Specificity gate calibration** — once enough `CandidateFeedback` labels exist, train a small classifier or tune the specificity threshold from precision/recall curves.
+- **Reddit UA policy review** — confirm UA string is compliant and requests are not rate-limited.
 
 ---
 
@@ -48,11 +46,9 @@
 
 ### Items
 
-- Replace SQLite with PostgreSQL + pgvector for embedding support.
-- Add vector embedding layer for semantic niche retrieval.
-- Swap Ollama adapter for OpenAI or Anthropic hosted model.
-- Add web dashboard (FastAPI + Jinja2 or React).
-- LangGraph conditional edges: reviewer retry loop, parallel source fetches, cheap-vs-expensive LLM branch.
-- ARIMA / deep forecasting beyond Prophet.
+- Replace SQLite with PostgreSQL + pgvector for native vector indexing (pgvector pulled forward conceptually but not implemented — NumPy brute-force is adequate for Phase 1 volumes).
+- Add web dashboard (FastAPI + Jinja2 or React) when Telegram-only stops scaling.
+- Multi-user Telegram support with per-user candidate subscriptions.
+- ARIMA / deep forecasting beyond rolling slope.
 - Containerise with Docker Compose → AKS Helm charts.
-- Multi-user Telegram support with per-user niche subscriptions.
+- Swap to Apptopia / Sensor Tower for Play Store data if `google-play-scraper` becomes unreliable long-term.

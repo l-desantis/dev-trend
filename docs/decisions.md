@@ -209,3 +209,46 @@ later) and (b) chaining the alert inside `_scoring_job`.
 - DB growth is bounded. A system ingesting from all four sources for 10 niches generates ~400 SourceItems/day; after 90 days steady-state that is ~36 000 rows, well within SQLite limits.
 - Daily aggregate signals accumulate indefinitely. This is intentional: percentile rank needs the full history of normalised Growth/Demand/Novelty raws, not just the last 30 days.
 - The 10-day stale alert catches missed Sunday jobs (e.g. scheduler downtime) without flooding logs on every scoring run.
+
+---
+
+## ADR-009 — Pivot to opportunity discovery
+
+**Date:** 2026-05-06
+**Status:** Accepted
+
+**Context:** v3 treated "niche" as the atomic unit, required upfront curation via `niches.yaml`, and scored pre-defined buckets rather than emergent signals. This created editorial bottlenecks and missed opportunities the seed list never anticipated. See spec `docs/superpowers/specs/2026-04-28-opportunity-discovery-pivot-design.md` §1 (Motivation) for the full analysis.
+
+**Decision:** Reframe DevTrend as an **opportunity discovery engine**. The system extracts pain-points from raw text (LLM pass), clusters them into `OpportunityCandidate` rows (HDBSCAN), and labels clusters as mid-precision app hypotheses. Candidates are scored, lifecycled (emerging → validated → mature), and pushed via Telegram. A candidate is hypothesis-first — the system discovers them, not a human editor.
+
+**Consequences:** v3 agent code (`app/agents/`), forecasting module (`app/forecasting/`), and niche YAML are removed in C-10. The schema gains `PainPoint`, `OpportunityCandidate`, and related tables. GitHub stars become a *validation* signal rather than a scoring dimension.
+
+---
+
+## ADR-010 — Retire LangGraph in favour of explicit pipeline stages
+
+**Date:** 2026-05-06
+**Status:** Accepted (supersedes ADR-005)
+
+**Context:** ADR-005 chose LangGraph because v3 generated one brief per niche using a multi-step agent graph (retrieve → score → forecast → generate → review). v4 operates on collections: extract over batches, cluster over today's unmatched pain-points, score across the candidate population. Each stage is a coherent, independently testable async function — LangGraph's value (orchestrating per-record agent steps) no longer applies.
+
+**Decision:** Remove `app/agents/` entirely. Pipeline stages are plain `async def` functions composed in `app/pipeline/orchestrator.py`. The adapter DI pattern from ADR-005 §5 is retained — `LLMAdapter` and `EmbeddingAdapter` ABCs remain; only the LangGraph runtime is dropped.
+
+**Consequences:** Simpler control flow and easier debugging. Each stage can be replayed or tested in isolation. The scoring → alert chain is a single async coroutine rather than a graph traversal. `langgraph` and `langchain-core` can be removed from `pyproject.toml` when the dependency sweep is done.
+
+---
+
+## ADR-011 — Identity resolution, weekly re-cluster, and per-model embedding isolation
+
+**Date:** 2026-05-06
+**Status:** Accepted
+
+**Context:** Pain-point embeddings must be matched against existing `OpportunityCandidate` centroids to avoid duplicating candidates. Over time, candidates can drift (pain-points shift topic) or converge (two distinct candidates accumulate similar evidence). A per-run identity-resolution step attaches new pain-points; a weekly sweep corrects accumulated drift.
+
+**Decision:**
+- **Daily identity resolution** (Stage 3, every pipeline run): attach unmatched `PainPoint` rows to the nearest active candidate if cosine similarity ≥ `IDENTITY_RESOLUTION_THRESHOLD` (default 0.82). Threshold is conservative — false non-attachment is cheaper than false merging.
+- **Weekly re-cluster** (Sundays 04:00 UTC, `app/pipeline/recluster.py`): re-cluster the rolling 30-day window from scratch. Merge candidates whose pain-points converged (cosine sim ≥ 0.88 on cluster mean vs centroid); split candidates whose pain-points diverged (intra-cluster cohesion < 0.3). Archive merged losers with `merged_into_id` set for chain traversal.
+- **Embedding-model isolation**: `PainPoint.embedding_model` and `OpportunityCandidate.embedding_model` gate all matching — a NIM-embedded pain-point (dim 1024) never compares against an Ollama centroid (dim 768). Cross-provider re-embedding is a follow-up script, not an automated step.
+- **`merged_into_id` bookkeeping**: `resolve_candidate_root()` in `app/db_helpers/candidate_resolution.py` traverses merge chains and detects cycles defensively.
+
+**Consequences:** Candidates have stable identity across weeks even as evidence shifts. The weekly re-cluster is the long-term defence against drift. Merge threshold 0.88 is more conservative than the daily resolution threshold (0.82) because archiving a candidate is more destructive than attaching a single pain-point.

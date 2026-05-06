@@ -74,7 +74,7 @@ Two design points from spec §4.3 also land in Plan C:
 
 ## Tasks
 
-### C-00 — `google-play-scraper` viability spike (BLOCKING — do this first)
+### C-00 — `google-play-scraper` viability spike (BLOCKING — do this first) ✅ DONE
 
 **Files:** `scripts/playstore_spike.py` (kept as a permanent smoke check; re-run on every dependency bump), notes appended to this plan under the "Spike result" subsection below.
 
@@ -105,11 +105,18 @@ Two design points from spec §4.3 also land in Plan C:
 
 **Suggested commit:** `chore(playstore): viability spike for google-play-scraper` — commits the spike script under `scripts/playstore_spike.py` plus the plan update with recorded outcome.
 
-**Spike result:** _(to be filled in by the executor)_
+**Spike result:**
+
+- **Version tested:** `google-play-scraper==1.2.7`
+- **Date:** 2026-05-06
+- **`app(app_id)`:** ✅ Works — `com.duolingo` and `com.spotify.music` return title + description. (`com.notion.id` is a wrong app ID; correct is `com.notion.so` — not a library bug.)
+- **`reviews(app_id, sort=Sort.NEWEST, count=50, lang='en', country='us')`:** ✅ Works — returns 50 reviews per app. `at` field is a Python `datetime` object. `repliedAt` (not `replyAt`). Full response key set for `_to_raw_item`: `reviewId`, `userName`, `userImage`, `content`, `score`, `thumbsUpCount`, `reviewCreatedVersion`, `at`, `replyContent`, `repliedAt`, `appVersion`.
+- **`list()`:** ❌ Does NOT exist in v1.2.7 — `cannot import name 'list' from 'google_play_scraper'`.
+- **Decision:** `reviews()` works, `list()` broken → **path (b): static seed**. Pin `google-play-scraper==1.2.7`. C-02 becomes a static YAML loader; `data/playstore_seed_apps.yaml` is the source of truth for which apps to track.
 
 ---
 
-### C-01 — `google-play-scraper` dependency
+### C-01 — `google-play-scraper` dependency ✅ DONE
 
 **Depends on:** C-00 spike result.
 
@@ -138,7 +145,7 @@ Have user run `uv sync` and verify the import works in Python: `from google_play
 
 ---
 
-### C-02 — Play Store app discovery
+### C-02 — Play Store app discovery ✅ DONE (path b — static seed)
 
 **Depends on:** C-00 outcome. If C-00 chose path "(b) static seed", this task **collapses to a YAML loader** — replace the `list()` calls below with `yaml.safe_load(open('data/playstore_seed_apps.yaml'))` and an upsert loop. The cron in C-17 still runs weekly but becomes a no-op refresh that re-reads the YAML (lets the user curate without code changes).
 
@@ -182,7 +189,7 @@ Add `TrackedApp` to `app/models.py`.
 
 ---
 
-### C-03 — Play Store reviews connector
+### C-03 — Play Store reviews connector ✅ DONE
 
 **Depends on:** C-00 outcome confirms `reviews()` works. Use the *exact* response key names recorded in the C-00 spike result (the README is sometimes out of date) when writing `_to_raw_item`.
 
@@ -241,7 +248,7 @@ class PlayStoreReviewsConnector(BaseConnector):
 
 ---
 
-### C-04 — iOS App Store RSS connector (optional, behind flag)
+### C-04 — iOS App Store RSS connector (optional, behind flag) ✅ DONE
 
 **Files:** `app/ingestion/ios_rss_connector.py`, `app/config.py`, `tests/ingestion/test_ios_rss_connector.py`
 
@@ -265,7 +272,7 @@ If `settings.enable_ios_rss=False` (default), this connector is not registered w
 
 ---
 
-### C-05 — NIM LLM adapter
+### C-05 — NIM LLM adapter ✅ DONE
 
 **Files:** `app/llm/nim_adapter.py`, `tests/llm/test_nim_adapter.py`
 
@@ -319,7 +326,7 @@ class NvidiaNimAdapter(LLMAdapter):
 
 ---
 
-### C-06 — NIM embedding adapter
+### C-06 — NIM embedding adapter ✅ DONE
 
 **Files:** `app/llm/nim_embedding_adapter.py`, `tests/llm/test_nim_adapters.py`
 
@@ -361,7 +368,7 @@ The dim mismatch between Ollama (`nomic-embed-text`, 768) and NIM (`nv-embedqa-e
 
 ---
 
-### C-07 — Update factory for NIM
+### C-07 — Update factory for NIM ✅ DONE
 
 **Files:** `app/llm/factory.py`, `tests/llm/test_factory.py`
 
@@ -386,7 +393,7 @@ Validation: if `LLM_PROVIDER=nim` and `NIM_API_KEY=""`, raise `ValueError` at st
 
 ---
 
-### C-08 — Weekly re-cluster pass
+### C-08 — Weekly re-cluster pass ✅ DONE
 
 **Files:** `app/pipeline/recluster.py`, `app/db_helpers/candidate_resolution.py`, `tests/pipeline/test_recluster.py`
 
@@ -453,7 +460,7 @@ async def resolve_candidate_root(session, candidate_id: int) -> int:
 
 ---
 
-### C-09 — Move v4 prompts out of `app/agents/`
+### C-09 — Move v4 prompts out of `app/agents/` ✅ DONE
 
 **Files:** `app/llm/prompts.py` (new), `app/agents/prompts.py` (delete in C-10), all callers
 
@@ -465,7 +472,7 @@ Plan A's task A-08 added v4 extract/label prompts to `app/agents/prompts.py` (pr
 
 ---
 
-### C-10 — Delete v3 code
+### C-10 — Delete v3 code ✅ DONE
 
 **Files:** various — see list
 
@@ -499,7 +506,7 @@ After all chunks: full test suite green; no broken imports; coverage report show
 
 ---
 
-### C-11 — ADR-009: Pivot to opportunity discovery
+### C-11 — ADR-009: Pivot to opportunity discovery ✅ DONE
 
 **Files:** `docs/decisions.md`
 
@@ -511,7 +518,7 @@ ADR length should match existing entries (~150–200 words). Don't repeat the sp
 
 ---
 
-### C-12 — ADR-010: Retire LangGraph
+### C-12 — ADR-010: Retire LangGraph ✅ DONE
 
 **Files:** `docs/decisions.md`
 
@@ -525,7 +532,7 @@ Consequences: simpler control flow, easier debugging, easier replay. Plan B's li
 
 ---
 
-### C-13 — ADR-011: Identity resolution & weekly re-clustering
+### C-13 — ADR-011: Identity resolution & weekly re-clustering ✅ DONE
 
 **Files:** `docs/decisions.md`
 
@@ -543,7 +550,7 @@ Consequences: candidates have stable identity across weeks even as evidence shif
 
 ---
 
-### C-14 — Bump project document to v4
+### C-14 — Bump project document to v4 ✅ DONE
 
 **Files:** `devtrend-project-document.md`, `docs/archive/v3/devtrend-project-document-v3.md`
 
@@ -574,7 +581,7 @@ Length target: similar to v3 (~700–800 lines). Lots of content can be lifted f
 
 ---
 
-### C-15 — Update roadmap
+### C-15 — Update roadmap ✅ DONE
 
 **Files:** `docs/roadmap.md`
 
@@ -606,7 +613,7 @@ See `docs/superpowers/specs/2026-04-28-opportunity-discovery-pivot-design.md` fo
 
 ---
 
-### C-16 — Update README
+### C-16 — Update README ✅ DONE
 
 **Files:** `README.md`
 
@@ -626,7 +633,7 @@ Rewrite the README around v4. Sections:
 
 ---
 
-### C-17 — Scheduler additions
+### C-17 — Scheduler additions ✅ DONE
 
 **Files:** `app/ingestion/scheduler.py`, `tests/test_scheduler.py`
 
@@ -667,7 +674,7 @@ iOS RSS ingestion is registered conditionally on `settings.enable_ios_rss`.
 
 ---
 
-### C-18 — End-to-end fresh-deploy walkthrough
+### C-18 — End-to-end fresh-deploy walkthrough ✅ DONE
 
 **Files:** `tests/integration/test_fresh_deploy.py` (new directory)
 
@@ -689,7 +696,7 @@ This test is slow (it runs a lot of real code paths). Mark with `@pytest.mark.in
 
 ---
 
-### C-19 — Extend pruning job for v4 entities
+### C-19 — Extend pruning job for v4 entities ✅ DONE
 
 **Files:** `app/maintenance/pruning.py`, `tests/test_pruning.py`
 
@@ -737,7 +744,7 @@ The `NicheSignal` clause is now dead (the table is gone after Plan A); delete it
 
 ---
 
-### C-20 — Final lint + type check
+### C-20 — Final lint + type check ✅ DONE
 
 **Files:** the whole codebase
 
