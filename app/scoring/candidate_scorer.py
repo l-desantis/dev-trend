@@ -34,13 +34,14 @@ async def score_all_candidates(
     session: AsyncSession,
     *,
     as_of: datetime,
+    gate: int | None = None,
 ) -> list[CandidateScoreHistory]:
     """Score all active above-gate candidates and persist CandidateScoreHistory.
 
     Idempotent for the same as_of date: existing rows for that date are deleted first.
     """
-    settings = get_settings()
-    gate = settings.specificity_gate
+    if gate is None:
+        gate = get_settings().specificity_gate
 
     # Fetch active, above-gate candidates
     result = await session.execute(
