@@ -9,6 +9,7 @@ Runs once on startup when the SourceItem table is empty:
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Optional
 
 import structlog
 
@@ -16,6 +17,7 @@ from app.config import Settings
 from app.ingestion.base import BaseConnector
 from app.llm.base import LLMAdapter
 from app.llm.embedding_base import EmbeddingAdapter
+from app.pipeline.token_estimator import TokenEstimate
 
 log = structlog.get_logger(__name__)
 
@@ -43,9 +45,10 @@ class BackfillReport:
     candidates_created: int = 0
     labelled: int = 0
     duration_s: float = 0.0
+    estimate: Optional[TokenEstimate] = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "history_days": self.history_days,
             "items_per_source": self.items_per_source,
             "painpoints_created": self.painpoints_created,
@@ -53,6 +56,9 @@ class BackfillReport:
             "labelled": self.labelled,
             "duration_s": round(self.duration_s, 1),
         }
+        if self.estimate is not None:
+            d["estimate"] = self.estimate.to_dict()
+        return d
 
 
 async def bulk_backfill(
@@ -62,6 +68,7 @@ async def bulk_backfill(
     settings: Settings,
     history_days: int = 30,
     extraction_limit: int | None = None,
+    dry_run: bool = False,
 ) -> BackfillReport:
     """One-shot bulk backfill: fetch → v4 pipeline.
 
@@ -114,11 +121,23 @@ async def bulk_backfill(
             )
             report.items_per_source[connector.source_type] = total_inserted
 
-    # 2. Run v4 pipeline over backfilled corpus
+    # 2. Run v4 pipeline OR estimate tokens
+    from app.db import _get_session_factory
+    session_factory = _get_session_factory()
+
+    if dry_run:
+        from app.pipeline.token_estimator import estimate_tokens
+        report.estimate = await estimate_tokens(session_factory, settings)
+        report.duration_s = time.monotonic() - start
+        log.info(
+            "bulk_backfill_dry_run_complete",
+            component="backfill",
+            **report.to_dict(),
+        )
+        return report
+
     try:
-        from app.db import _get_session_factory
         from app.pipeline.orchestrator import run_pipeline
-        session_factory = _get_session_factory()
         pipeline_report = await run_pipeline(session_factory, llm, embedder, settings, since=since, extraction_limit=extraction_limit)
         if pipeline_report.extraction:
             report.painpoints_created = pipeline_report.extraction.painpoints_created
