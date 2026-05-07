@@ -88,3 +88,36 @@ async def test_clustering_creates_unlabelled_candidates(session: AsyncSession) -
         assert c.labeller_model is None
         assert c.specificity == 0
         assert c.centroid is not None
+
+
+async def test_clustering_propagates_embedding_model(session: AsyncSession) -> None:
+    base = _unit([1.0, 0.0] + [0.0] * 30)
+    for i in range(4):
+        item = await _seed_item(session, f"e{i}")
+        noise = np.random.default_rng(i).normal(0, 0.01, 32)
+        vec = _unit((np.array(base) + noise).tolist())
+        pp = await _make_pp(session, item.id, vec)
+        pp.embedding_model = "mock-embed-v1"
+    await session.commit()
+
+    await run_clustering(session, min_cluster_size=2)
+
+    candidates = (await session.execute(select(OpportunityCandidate))).scalars().all()
+    assert len(candidates) >= 1
+    assert all(c.embedding_model == "mock-embed-v1" for c in candidates)
+
+
+async def test_clustering_skips_mixed_model_clusters(session: AsyncSession) -> None:
+    base = _unit([1.0, 0.0] + [0.0] * 30)
+    models = ["model-a", "model-b", "model-a", "model-b"]
+    for i, m in enumerate(models):
+        item = await _seed_item(session, f"f{i}")
+        noise = np.random.default_rng(i).normal(0, 0.005, 32)
+        vec = _unit((np.array(base) + noise).tolist())
+        pp = await _make_pp(session, item.id, vec)
+        pp.embedding_model = m
+    await session.commit()
+
+    report = await run_clustering(session, min_cluster_size=2)
+
+    assert report.candidates_created == 0

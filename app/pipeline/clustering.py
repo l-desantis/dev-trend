@@ -92,12 +92,23 @@ async def run_clustering(
         if norm > 0:
             mean_vec = mean_vec / norm
 
+        model_name = cluster_pps[0].embedding_model
+        mixed = any(pp.embedding_model != model_name for pp in cluster_pps)
+        if mixed:
+            log.error(
+                "clustering_mixed_embedding_models",
+                label=lbl,
+                expected=model_name,
+            )
+            continue
+
         candidate = OpportunityCandidate(
             problem_statement="",
             centroid=mean_vec.tolist(),
             specificity=0,
             lifecycle_state=None,
             labeller_model=None,  # unlabelled sentinel
+            embedding_model=model_name,
         )
         session.add(candidate)
         await session.flush()
