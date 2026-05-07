@@ -153,7 +153,7 @@ def _setup_logging(verbose: bool) -> _BackfillProgress:
             show_path=False,
             show_level=False,
             markup=False,
-            highlight=False,
+            highlighter=None,
         )],
         force=True,
     )
