@@ -43,6 +43,9 @@ packages = ["app"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    "integration: slow end-to-end tests excluded from the default run (deselect with -m 'not integration')",
+]
 
 [tool.mypy]
 python_version = "3.11"

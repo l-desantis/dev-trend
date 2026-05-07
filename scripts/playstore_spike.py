@@ -15,7 +15,7 @@ from datetime import datetime
 WELL_KNOWN_APPS = [
     "com.duolingo",
     "com.spotify.music",
-    "com.notion.id",
+    "com.notion.so",
 ]
 
 PASS = "✅"
