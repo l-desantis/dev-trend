@@ -153,6 +153,38 @@ async def test_recluster_merges_drifted_candidates(session: AsyncSession) -> Non
     assert archived[0].merged_into_id is not None
 
 
+async def test_recluster_splits_overbroad_candidate(session: AsyncSession) -> None:
+    """Overbroad candidate spanning two sub-clusters should be split."""
+    si = await _seed_source_item(session, 30)
+    # Centroid between the two future sub-clusters
+    cand = await _seed_candidate(session, [0.707, 0.707, 0.0])
+    # 3 pain-points near [1,0,0] and 3 near [0,1,0] — orthogonal groups
+    for _ in range(3):
+        await _seed_pain_point(session, si.id, [1.0, 0.0, 0.0], candidate_id=cand.id)
+        await _seed_pain_point(session, si.id, [0.0, 1.0, 0.0], candidate_id=cand.id)
+    await session.commit()
+
+    # threshold=0.75 > cohesion≈0.707, so the split fires; min_cluster_size=3 → n_clusters=2
+    report = await run_weekly_recluster(
+        session,
+        merge_threshold=0.99,
+        split_silhouette_threshold=0.75,
+        min_cluster_size=3,
+    )
+
+    assert report.split_count >= 1
+
+    all_cands = (await session.execute(select(OpportunityCandidate))).scalars().all()
+    assert len(all_cands) >= 2  # original + at least one new
+
+    # Original candidate retains the largest sub-cluster; new one gets the rest
+    original_pp_count = sum(
+        1 for pp in (await session.execute(select(PainPoint))).scalars().all()
+        if pp.candidate_id == cand.id
+    )
+    assert original_pp_count == 3
+
+
 async def test_recluster_filters_by_embedding_model(session: AsyncSession) -> None:
     """Pain points with different embedding_models must not be co-clustered."""
     si = await _seed_source_item(session, 20)
