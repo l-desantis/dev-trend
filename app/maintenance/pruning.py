@@ -46,6 +46,7 @@ async def prune_old_data(
         source_deleted = r1.rowcount
 
         # Delete old CandidateValidation rows (keep newest per candidate + rows within window)
+        # SQLite stores datetimes as naive ISO strings; strip tzinfo to avoid deprecated adapter
         r2 = await session.execute(
             text("""
                 DELETE FROM candidate_validations
@@ -54,7 +55,7 @@ async def prune_old_data(
                        SELECT MAX(id) FROM candidate_validations GROUP BY candidate_id
                    )
             """),
-            {"cutoff": signal_cutoff},
+            {"cutoff": signal_cutoff.replace(tzinfo=None)},
         )
         cv_deleted = r2.rowcount
 

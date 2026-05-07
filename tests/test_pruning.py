@@ -55,7 +55,7 @@ async def _run_prune(Session, now: datetime):
                        SELECT MAX(id) FROM candidate_validations GROUP BY candidate_id
                    )
             """),
-            {"cutoff": signal_cutoff},
+            {"cutoff": signal_cutoff.replace(tzinfo=None)},
         )
         r3 = await session.execute(
             delete(LifecycleEvent).where(LifecycleEvent.recorded_at < signal_cutoff)
