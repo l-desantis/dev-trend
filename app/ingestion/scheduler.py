@@ -151,19 +151,19 @@ def build_scheduler(
     )
 
     async def _playstore_ingestion_job() -> None:
+        # Play Store ingests at 02:00 UTC; daily pipeline at 03:30 picks up the new SourceItems.
+        # Runs before the pipeline deliberately so same-day reviews enter the same day's digest.
         from app.ingestion.playstore_connector import PlayStoreReviewsConnector
         import httpx
-        connector = PlayStoreReviewsConnector(
-            client=httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s),
-            registry=registry,
-        )
-        try:
-            await asyncio.wait_for(connector.run(), timeout=settings.ingestion_job_timeout_s * 4)
-        except asyncio.TimeoutError:
-            registry.mark_error("playstore", "job timed out", settings.ingestion_job_timeout_s * 4)
-            log.error("Play Store ingestion job timed out")
-        except Exception as exc:
-            log.error("Play Store ingestion job crashed", error=str(exc))
+        async with httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s) as client:
+            connector = PlayStoreReviewsConnector(client=client, registry=registry)
+            try:
+                await asyncio.wait_for(connector.run(), timeout=settings.ingestion_job_timeout_s * 4)
+            except asyncio.TimeoutError:
+                registry.mark_error("playstore", "job timed out", settings.ingestion_job_timeout_s * 4)
+                log.error("Play Store ingestion job timed out")
+            except Exception as exc:
+                log.error("Play Store ingestion job crashed", error=str(exc))
 
     scheduler.add_job(
         _playstore_ingestion_job,
@@ -225,14 +225,12 @@ def build_scheduler(
         async def _ios_rss_ingestion_job() -> None:
             from app.ingestion.ios_rss_connector import IosRssReviewsConnector
             import httpx
-            connector = IosRssReviewsConnector(
-                client=httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s),
-                registry=registry,
-            )
-            try:
-                await asyncio.wait_for(connector.run(), timeout=settings.ingestion_job_timeout_s * 2)
-            except Exception as exc:
-                log.error("iOS RSS ingestion job crashed", error=str(exc))
+            async with httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s) as client:
+                connector = IosRssReviewsConnector(client=client, registry=registry)
+                try:
+                    await asyncio.wait_for(connector.run(), timeout=settings.ingestion_job_timeout_s * 2)
+                except Exception as exc:
+                    log.error("iOS RSS ingestion job crashed", error=str(exc))
 
         scheduler.add_job(
             _ios_rss_ingestion_job,
