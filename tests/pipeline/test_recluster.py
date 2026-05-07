@@ -153,6 +153,33 @@ async def test_recluster_merges_drifted_candidates(session: AsyncSession) -> Non
     assert archived[0].merged_into_id is not None
 
 
+async def test_recluster_relabels_when_30pct_evidence_is_post_labelling(session: AsyncSession) -> None:
+    """Candidates with >30% new pain-points since last labelling should be reset."""
+    si = await _seed_source_item(session, 40)
+    cand = await _seed_candidate(session, [1.0, 0.0, 0.0])
+    labelled_at = datetime.now(UTC) - timedelta(days=10)
+    cand.labeller_model = "mock-llm"
+    cand.last_labelled_at = labelled_at
+    cand.problem_statement = "original label"
+    await session.flush()
+
+    # 2 pain-points before labelling, 2 after (50% new → triggers relabel)
+    for i in range(2):
+        pp = await _seed_pain_point(session, si.id, [1.0, 0.0, 0.0], candidate_id=cand.id)
+        pp.extracted_at = labelled_at - timedelta(days=i + 1)
+    for i in range(2):
+        pp = await _seed_pain_point(session, si.id, [1.0, 0.0, 0.0], candidate_id=cand.id)
+        pp.extracted_at = labelled_at + timedelta(days=i + 1)
+    await session.commit()
+
+    report = await run_weekly_recluster(session, merge_threshold=0.99, min_cluster_size=2)
+
+    assert report.relabelled_count >= 1
+    await session.refresh(cand)
+    assert cand.problem_statement == "[unlabelled]"
+    assert cand.labeller_model is None
+
+
 async def test_recluster_splits_overbroad_candidate(session: AsyncSession) -> None:
     """Overbroad candidate spanning two sub-clusters should be split."""
     si = await _seed_source_item(session, 30)

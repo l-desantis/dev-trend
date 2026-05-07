@@ -1,6 +1,7 @@
 """Stage 5 — label unlabelled OpportunityCandidates."""
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select, text
@@ -90,6 +91,7 @@ async def run_labelling(
 
         # Must be set last so any earlier failure leaves labeller_model=NULL
         candidate.labeller_model = llm.model_name
+        candidate.last_labelled_at = datetime.now(UTC)
         await session.flush()
 
         # Propagate category to parent SourceItems

@@ -25,6 +25,8 @@ async def migrate(database_url: str) -> None:
         # OpportunityCandidate — embedding model + merge chain
         "ALTER TABLE opportunity_candidates ADD COLUMN embedding_model VARCHAR(150)",
         "ALTER TABLE opportunity_candidates ADD COLUMN merged_into_id INTEGER REFERENCES opportunity_candidates(id)",
+        # v4.D: honest labelling timestamp for relabel heuristic
+        "ALTER TABLE opportunity_candidates ADD COLUMN last_labelled_at DATETIME",
     ]
 
     async with engine.begin() as conn:

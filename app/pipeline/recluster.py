@@ -263,12 +263,14 @@ async def _check_relabel_needed(
             continue
         # We don't have the original set, but if >30% of current PPs were extracted
         # after last labelling, mark for re-label (heuristic)
-        last_labelled_at = cand.last_evidence_at
+        last_labelled_at = cand.last_labelled_at
         if last_labelled_at is None:
             continue
+        # SQLite returns naive datetimes; normalize to naive for comparison
+        llt_naive = last_labelled_at.replace(tzinfo=None)
         recent_count = sum(
             1 for pp in candidate_pps.get(cand.id, [])
-            if pp.extracted_at and pp.extracted_at > last_labelled_at
+            if pp.extracted_at and pp.extracted_at.replace(tzinfo=None) > llt_naive
         )
         if len(current_pp_ids) > 0 and recent_count / len(current_pp_ids) > 0.3:
             cand.problem_statement = "[unlabelled]"

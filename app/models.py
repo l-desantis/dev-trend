@@ -114,6 +114,7 @@ class OpportunityCandidate(Base):
         Integer, ForeignKey("opportunity_candidates.id"), nullable=True
     )
     last_evidence_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_labelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
