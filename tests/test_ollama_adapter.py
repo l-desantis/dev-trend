@@ -14,14 +14,10 @@ async def test_generate_brief_returns_model_text():
         adapter._client, "chat", new=AsyncMock(return_value=_fake_chat_response("hello world"))
     ) as chat:
         out = await adapter.generate_brief({
-            "niche": {"name": "X", "slug": "x", "category": "c", "summary": ""},
-            "scorecard": {"score_total": 50.0, "breakdown": {
-                "growth": {"raw": 0, "normalized": 50},
-                "demand": {"raw": 0, "normalized": 50},
-                "novelty": {"raw": 0, "normalized": 50},
-            }},
-            "forecast": {"label": "Stable", "slope": 0.0},
-            "evidence": [],
+            "problem_statement": "X developers need a better onboarding tool",
+            "audience": "indie developers",
+            "why_now": "AI tooling is maturing",
+            "evidence": [{"source_type": "reddit", "excerpt": "no good tools exist"}],
         })
     assert out == "hello world"
     chat.assert_awaited_once()
