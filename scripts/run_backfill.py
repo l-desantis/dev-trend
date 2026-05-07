@@ -133,6 +133,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--db-url", default=None)
     parser.add_argument("--max-extraction-items", type=int, default=None, metavar="N",
                         help="Cap LLM extraction to the first N source items (useful for testing)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Skip the pipeline; print an estimate of how many LLM tokens it would spend.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show DEBUG-level logs")
     return parser.parse_args(argv)
 
@@ -175,6 +177,42 @@ def _setup_logging(verbose: bool) -> _BackfillProgress:
         for noisy in ("httpx", "httpcore", "hpack"):
             logging.getLogger(noisy).setLevel(logging.WARNING)
     return progress
+
+
+def _print_estimate(report: Any, console: Any) -> None:
+    from rich.table import Table
+
+    est = report.estimate
+    if est is None:
+        return
+    table = Table(title="Dry-run token estimate", show_header=True, header_style="bold")
+    table.add_column("Stage")
+    table.add_column("Calls", justify="right")
+    table.add_column("Input tokens", justify="right")
+    table.add_column("Output tokens", justify="right")
+    table.add_column("Subtotal", justify="right")
+
+    def row(name: str, s: Any) -> None:
+        table.add_row(
+            name,
+            f"{s.calls:,}",
+            f"{s.input_tokens:,}",
+            f"{s.output_tokens:,}",
+            f"{s.total:,}",
+        )
+
+    row("Extract (exact)", est.extract)
+    row("Label (existing unlabelled)", est.label)
+    row("Label (projected new)", est.label_projected)
+    row("Embed", est.embed)
+    table.add_section()
+    table.add_row(
+        "[bold]TOTAL[/bold]", "", "", "",
+        f"[bold]{est.total_tokens:,}[/bold]",
+    )
+    console.print(table)
+    for note in est.notes:
+        console.print(f"[dim]• {note}[/dim]")
 
 
 def _section(title: str, console: Any = None) -> None:
@@ -277,6 +315,7 @@ async def _run(args: argparse.Namespace, progress: _BackfillProgress) -> None:
                 connectors, llm, embedder, settings,
                 history_days=args.history_days,
                 extraction_limit=args.max_extraction_items,
+                dry_run=args.dry_run,
             )
             elapsed_backfill = time.monotonic() - t_backfill
             log.info("bulk_backfill finished in %.1fs", elapsed_backfill)
@@ -290,6 +329,12 @@ async def _run(args: argparse.Namespace, progress: _BackfillProgress) -> None:
         progress.live.stop()
 
     # ── 6. Summary ───────────────────────────────────────────────────────────
+    if args.dry_run:
+        _section("6/6  Token estimate")
+        _print_estimate(report, progress.console)
+        print(json.dumps({"backfill_dry_run_report": report.to_dict()}))
+        return report
+
     _section("6/6  Summary")
     result = report.to_dict()
     total_items = sum(report.items_per_source.values())
