@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.llm.base import LLMAdapter
 from app.llm.mock_adapter import MockLLMAdapter
+from app.llm.prompts import render_brief_prompt
 from app.models import Base, CandidateBrief, OpportunityCandidate, PainPoint, SourceItem
 from app.pipeline.brief_generation import generate_briefs_for
 
@@ -90,3 +93,42 @@ async def test_generate_brief_idempotent_same_day(session: AsyncSession) -> None
     from sqlalchemy import select, func
     count = (await session.execute(select(func.count(CandidateBrief.id)))).scalar_one()
     assert count == 1
+
+
+class _PromptRenderingAdapter(LLMAdapter):
+    """LLM adapter that calls render_brief_prompt and returns the rendered text."""
+
+    @property
+    def model_name(self) -> str:
+        return "prompt-render-test"
+
+    async def extract_pain_point(self, source_item_text: str) -> dict[str, Any]:
+        return {"has_unmet_need": False, "problem_text": "", "audience": "", "urgency_cue": "", "current_workaround": ""}
+
+    async def label_cluster(self, evidence_lines: str, categories: str) -> dict[str, Any]:
+        return {"problem_statement": "", "audience": "", "why_now": "", "specificity": 1, "suggested_category_slug": None}
+
+    async def generate_brief(self, context: dict[str, Any]) -> str:
+        return render_brief_prompt(context)
+
+    async def summarize_evidence(self, items: list[Any]) -> str:
+        return ""
+
+    async def review_brief(self, brief: str) -> dict[str, object]:
+        return {}
+
+
+async def test_render_brief_prompt_no_key_error(session: AsyncSession) -> None:
+    c = await _seed(session)
+    llm = _PromptRenderingAdapter()
+
+    briefs = await generate_briefs_for(session, llm, [c])
+
+    assert len(briefs) == 1
+    rendered = briefs[0].summary
+    assert c.problem_statement in rendered
+    assert any(
+        ev["source_type"] in rendered
+        for ev in briefs[0].evidence_json
+        if ev.get("source_type")
+    )
