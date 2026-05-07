@@ -126,14 +126,15 @@ async def bulk_backfill(
             report.candidates_created = pipeline_report.clustering.candidates_created
         if pipeline_report.labelling:
             report.labelled = pipeline_report.labelling.labelled
-    except Exception as exc:
-        log.error("backfill_pipeline_error", component="backfill", error=str(exc))
     except BaseException as exc:
+        report.duration_s = time.monotonic() - start
         log.error(
-            "backfill_pipeline_fatal",
+            "backfill_pipeline_error",
             component="backfill",
             error=repr(exc),
             exc_type=type(exc).__name__,
+            exc_info=True,
+            **report.to_dict(),
         )
         raise
 

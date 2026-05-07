@@ -19,6 +19,7 @@ dependencies = [
     "scikit-learn>=1.4",
     "scipy>=1.13",
     "structlog>=24.0",
+    "rich>=13",
 ]
 
 [project.optional-dependencies]

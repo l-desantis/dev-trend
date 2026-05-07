@@ -36,6 +36,7 @@ async def run_labelling(
     ).scalars().all()
 
     report.unlabelled_found = len(unlabelled)
+    log.info("labelling_start", unlabelled_found=report.unlabelled_found)
 
     # Load all category slugs once
     all_slugs = list(
@@ -107,6 +108,7 @@ async def run_labelling(
             )
 
         report.labelled += 1
+        log.debug("labelling_progress", processed=report.labelled + report.failed)
 
     await session.commit()
     report.duration_ms = int((time.monotonic() - start) * 1000)
