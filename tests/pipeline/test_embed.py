@@ -58,3 +58,13 @@ async def test_embed_handles_empty_batch(session: AsyncSession) -> None:
 
     assert report.processed == 0
     spy_embed.assert_not_called()
+
+
+async def test_embed_tags_pain_points_with_model_name(session: AsyncSession) -> None:
+    await _seed_pain_points(session, 3)
+    embedder = MockEmbeddingAdapter()
+
+    await run_embedding(session, embedder)
+
+    pps = (await session.execute(select(PainPoint))).scalars().all()
+    assert all(pp.embedding_model == embedder.model_name for pp in pps)

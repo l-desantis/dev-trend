@@ -42,9 +42,11 @@ async def run_embedding(
             f"{pp.problem_text or ''}. Audience: {pp.audience or ''}. {pp.urgency_cue or ''}".strip()
             for pp in batch
         ]
+        model_name = embedder.model_name
         vectors = await embedder.embed(texts)
         for pp, vec in zip(batch, vectors):
             pp.embedding = vec
+            pp.embedding_model = model_name
         report.processed += len(batch)
 
     await session.commit()
