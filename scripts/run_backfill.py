@@ -140,23 +140,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _setup_logging(verbose: bool) -> _BackfillProgress:
     import structlog
     import structlog.stdlib
-    from rich.logging import RichHandler
+    from rich.text import Text
 
     progress = _BackfillProgress()
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        handlers=[RichHandler(
-            console=progress.console,
-            show_time=False,
-            show_path=False,
-            show_level=False,
-            markup=False,
-            highlighter=None,
-        )],
-        force=True,
-    )
+
+    # RichHandler can't decode ANSI codes that ConsoleRenderer emits;
+    # Text.from_ansi() does — route all stdlib log output through it so
+    # writes go through the Rich console and don't corrupt the Live display.
+    class _AnsiConsoleHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            try:
+                progress.console.print(Text.from_ansi(self.format(record)))
+            except Exception:
+                self.handleError(record)
+
+    handler = _AnsiConsoleHandler(level)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logging.basicConfig(level=level, handlers=[handler], force=True)
     structlog.configure(
         processors=[
             progress.processor,
