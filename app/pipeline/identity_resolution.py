@@ -45,10 +45,18 @@ async def run_identity_resolution(
         return report
 
     # Build per-model indexes to prevent cross-dim matching
-    from collections import defaultdict
     candidates_by_model: dict[str | None, list[OpportunityCandidate]] = defaultdict(list)
     for c in candidates:
         candidates_by_model[c.embedding_model].append(c)
+
+    # Build indexes once per model (O(M) construction, not O(N·M))
+    index_by_model: dict[str | None, EmbeddingIndex] = {
+        model: EmbeddingIndex(
+            ids=[c.id for c in model_cands],
+            vectors=[c.centroid for c in model_cands],
+        )
+        for model, model_cands in candidates_by_model.items()
+    }
 
     candidate_map = {c.id: c for c in candidates}
 
@@ -66,13 +74,9 @@ async def run_identity_resolution(
 
     for pp in unattached:
         report.unattached_checked += 1
-        model_candidates = candidates_by_model.get(pp.embedding_model, [])
-        if not model_candidates:
+        index = index_by_model.get(pp.embedding_model)
+        if index is None:
             continue
-        index = EmbeddingIndex(
-            ids=[c.id for c in model_candidates],
-            vectors=[c.centroid for c in model_candidates],
-        )
         results = index.nearest(pp.embedding, k=1, threshold=threshold)
         if not results:
             continue
