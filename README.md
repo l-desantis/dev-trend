@@ -86,10 +86,11 @@ Telegram push (daily digest 08:00 UTC + lifecycle alerts)
 Copy `.env.example` to `.env`. Key variables:
 
 ```
-LLM_PROVIDER=ollama          # ollama | nim | mock
+LLM_PROVIDER=ollama          # ollama | nim | openai | mock
 EMBEDDING_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
 NIM_API_KEY=                 # required when LLM_PROVIDER=nim
+OPENAI_API_KEY=              # required when LLM_PROVIDER=openai
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 GITHUB_TOKEN=
@@ -100,6 +101,10 @@ REDDIT_CLIENT_SECRET=
 ### Cloud deployment with NIM
 
 Set `LLM_PROVIDER=nim`, `EMBEDDING_PROVIDER=nim`, and `NIM_API_KEY=<your-key>`. The NIM adapters hit `https://integrate.api.nvidia.com/v1` by default. Ollama is not needed for cloud runs.
+
+### Cloud deployment with OpenAI
+
+Set `LLM_PROVIDER=openai`, `EMBEDDING_PROVIDER=openai`, and `OPENAI_API_KEY=<your-key>`. Defaults to `gpt-4.1-nano` for extraction/labelling and `text-embedding-3-small` (1536-dim) for embeddings. Override with `OPENAI_LLM_MODEL` and `OPENAI_EMBEDDING_MODEL`. OpenAI and NIM embedding buckets are isolated — switching providers does not invalidate existing cached pain-points.
 
 ---
 

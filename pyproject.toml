@@ -20,6 +20,7 @@ dependencies = [
     "scipy>=1.13",
     "structlog>=24.0",
     "rich>=13",
+    "openai>=1.0",
 ]
 
 [project.optional-dependencies]

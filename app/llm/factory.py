@@ -20,6 +20,15 @@ def make_llm_adapter(settings: Settings) -> LLMAdapter:
                 model=settings.nim_llm_model,
                 base_url=settings.nim_base_url,
             )
+        case "openai":
+            if not settings.openai_api_key:
+                raise ValueError("OPENAI_API_KEY required when LLM_PROVIDER=openai")
+            from app.llm.openai_adapter import OpenAIAdapter
+            return OpenAIAdapter(
+                api_key=settings.openai_api_key,
+                model=settings.openai_llm_model,
+                base_url=settings.openai_base_url,
+            )
         case _:
             raise ValueError(f"unknown llm_provider: {settings.llm_provider!r}")
 
@@ -40,6 +49,15 @@ def make_embedding_adapter(settings: Settings) -> EmbeddingAdapter:
                 api_key=settings.nim_api_key,
                 model=settings.nim_embedding_model,
                 base_url=settings.nim_base_url,
+            )
+        case "openai":
+            if not settings.openai_api_key:
+                raise ValueError("OPENAI_API_KEY required when EMBEDDING_PROVIDER=openai")
+            from app.llm.openai_embedding_adapter import OpenAIEmbeddingAdapter
+            return OpenAIEmbeddingAdapter(
+                api_key=settings.openai_api_key,
+                model=settings.openai_embedding_model,
+                base_url=settings.openai_base_url,
             )
         case _:
             raise ValueError(f"unknown embedding_provider: {settings.embedding_provider!r}")
