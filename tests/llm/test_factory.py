@@ -7,6 +7,8 @@ from app.llm.mock_adapter import MockLLMAdapter
 from app.llm.mock_embedding_adapter import MockEmbeddingAdapter
 from app.llm.nim_adapter import NvidiaNimAdapter
 from app.llm.nim_embedding_adapter import NvidiaNimEmbeddingAdapter
+from app.llm.openai_adapter import OpenAIAdapter
+from app.llm.openai_embedding_adapter import OpenAIEmbeddingAdapter
 
 
 def _settings(**kwargs) -> Settings:
@@ -61,4 +63,28 @@ def test_factory_raises_when_nim_embedding_key_missing() -> None:
 def test_make_embedding_adapter_unknown_raises() -> None:
     s = Settings.model_construct(embedding_provider="unknown")
     with pytest.raises(ValueError, match="unknown embedding_provider"):
+        make_embedding_adapter(s)
+
+
+def test_factory_returns_openai_adapter_when_configured() -> None:
+    s = _settings(llm_provider="openai", openai_api_key="sk-test")
+    adapter = make_llm_adapter(s)
+    assert isinstance(adapter, OpenAIAdapter)
+
+
+def test_factory_raises_when_openai_llm_key_missing() -> None:
+    s = _settings(llm_provider="openai", openai_api_key="")
+    with pytest.raises(ValueError, match="OPENAI_API_KEY required"):
+        make_llm_adapter(s)
+
+
+def test_factory_returns_openai_embedding_adapter_when_configured() -> None:
+    s = _settings(embedding_provider="openai", openai_api_key="sk-test")
+    adapter = make_embedding_adapter(s)
+    assert isinstance(adapter, OpenAIEmbeddingAdapter)
+
+
+def test_factory_raises_when_openai_embedding_key_missing() -> None:
+    s = _settings(embedding_provider="openai", openai_api_key="")
+    with pytest.raises(ValueError, match="OPENAI_API_KEY required"):
         make_embedding_adapter(s)

@@ -103,8 +103,8 @@ class Settings(BaseSettings):
     scoring_cron_minute: int = 15
 
     # Agent / brief generation
-    llm_provider: Literal["ollama", "nim", "mock"] = "ollama"
-    embedding_provider: Literal["ollama", "nim", "mock"] = "ollama"
+    llm_provider: Literal["ollama", "nim", "mock", "openai"] = "ollama"
+    embedding_provider: Literal["ollama", "nim", "mock", "openai"] = "ollama"
     brief_cron_hour: int = 3
     brief_cron_minute: int = 0
     brief_per_niche_timeout_s: float = 90.0
@@ -116,6 +116,12 @@ class Settings(BaseSettings):
     nim_base_url: str = "https://integrate.api.nvidia.com/v1"
     nim_llm_model: str = "meta/llama-3.1-70b-instruct"
     nim_embedding_model: str = "nvidia/nv-embedqa-e5-v5"
+
+    # OpenAI
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_llm_model: str = "gpt-4.1-nano"
+    openai_embedding_model: str = "text-embedding-3-small"
 
     # Play Store
     playstore_cron_hour: int = 2
