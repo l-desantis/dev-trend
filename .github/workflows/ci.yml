@@ -26,7 +26,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
       - name: Sync dev deps
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
       - name: ruff check
         run: uv run ruff check .
       - name: ruff format --check
@@ -43,7 +43,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
       - name: Sync dev deps
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
       - name: mypy
         run: uv run mypy app/
 
@@ -58,7 +58,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
       - name: Sync dev deps
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
       - name: pytest
         env:
           # Tests in Plan B still use SQLite. Plan D will replace this with a postgres service.
