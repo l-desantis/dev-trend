@@ -1,0 +1,32 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local DB and env
+devtrend.db
+devtrend.db-*
+.env
+.env.local
+
+# VCS / IDE
+.git/
+.gitignore
+.idea/
+.agents/
+.claude/
+
+# Tests and docs (not needed in the runtime image)
+tests/
+docs/
+KANBAN.md
+devtrend-project-document.md
+
+# Data dir is bind-mounted at runtime, not baked in
+data/
