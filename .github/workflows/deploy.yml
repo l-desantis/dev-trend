@@ -68,8 +68,8 @@ jobs:
             SOPS_AGE_KEY_FILE=/etc/devtrend/age.key sops -d secrets.enc.env > .env
             chmod 600 .env
             export IMAGE_TAG="sha-${NEW_SHA}"
-            docker compose pull
-            docker compose up -d --remove-orphans
+            docker compose -f docker-compose.yml pull
+            docker compose -f docker-compose.yml up -d --remove-orphans
             # Health gate — 60s budget.
             for i in $(seq 1 30); do
               if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
@@ -95,7 +95,7 @@ jobs:
             fi
             PREV=$(cat .deploy/previous_tag)
             export IMAGE_TAG="${PREV}"
-            docker compose up -d --remove-orphans
+            docker compose -f docker-compose.yml up -d --remove-orphans
             for i in $(seq 1 30); do
               if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
                 echo "rolled back to ${PREV} successfully"

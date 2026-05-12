@@ -42,8 +42,8 @@ jobs:
             fi
             echo "sha-${TARGET}" > .deploy/current_tag
             export IMAGE_TAG="sha-${TARGET}"
-            docker compose pull
-            docker compose up -d --remove-orphans
+            docker compose -f docker-compose.yml pull
+            docker compose -f docker-compose.yml up -d --remove-orphans
             for i in $(seq 1 30); do
               if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
                 echo "rolled back to sha-${TARGET}"
