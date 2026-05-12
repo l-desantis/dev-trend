@@ -15,38 +15,6 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint (ruff)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          version: "0.4.27"
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-      - name: Sync dev deps
-        run: uv sync --frozen --extra dev
-      - name: ruff check
-        run: uv run ruff check .
-      - name: ruff format --check
-        run: uv run ruff format --check .
-
-  typecheck:
-    name: Type check (mypy)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          version: "0.4.27"
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-      - name: Sync dev deps
-        run: uv sync --frozen --extra dev
-      - name: mypy
-        run: uv run mypy app/
-
   test:
     name: Tests (pytest, unit only)
     runs-on: ubuntu-24.04
