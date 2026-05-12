@@ -182,6 +182,34 @@ uv run ruff check app/ tests/
 
 ---
 
+## Production deploy & secrets
+
+DevTrend deploys automatically to a single Hetzner CX22 VPS on every push to `main`. The deploy is health-gated: if `/health` fails to come up within 60 s, the previous image is restored automatically and a Telegram message reports the rollback.
+
+### Secrets (SOPS + age)
+
+Production secrets are SOPS-encrypted at `secrets.enc.env` in this repo. The matching age private key lives on the VPS at `/etc/devtrend/age.key`. To edit secrets:
+
+```bash
+sops secrets.enc.env
+```
+
+This opens `$EDITOR` with the decrypted content; saving re-encrypts on close. Commit the updated `secrets.enc.env` and push — the next deploy will pick up the new values.
+
+To add a contributor with edit access: append their age public key to `.sops.yaml`, then run `sops updatekeys secrets.enc.env`.
+
+### Manual operations
+
+- **Roll back to a previous build:** GitHub → Actions → "Manual Rollback" → enter the target short SHA (any `sha-*` tag still on `ghcr.io/l-desantis/dev-trend`).
+- **Re-deploy a SHA:** same workflow.
+- **First-time VPS setup:** see `docs/superpowers/runbooks/vps-bootstrap.md`.
+
+### Image retention
+
+The most recent 10 `sha-*` builds plus `latest` are kept on ghcr.io. Older builds are pruned weekly by `prune-ghcr.yml`.
+
+---
+
 ## Limitations
 
 - Reddit: 1000-post ceiling per subreddit per backfill run.
