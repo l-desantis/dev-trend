@@ -1,0 +1,71 @@
+name: Manual Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Short SHA tag to roll back to (e.g. abc1234)"
+        required: true
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Add VPS host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.DEPLOY_SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Roll back
+        id: rollback
+        env:
+          TARGET: ${{ inputs.target_sha }}
+        run: |
+          ssh deploy@${{ secrets.DEPLOY_SSH_HOST }} bash -se <<'EOF'
+            set -euo pipefail
+            cd /opt/dev-trend
+            mkdir -p .deploy
+            if [ -f .deploy/current_tag ]; then
+              cp .deploy/current_tag .deploy/previous_tag
+            fi
+            echo "sha-${TARGET}" > .deploy/current_tag
+            export IMAGE_TAG="sha-${TARGET}"
+            docker compose pull
+            docker compose up -d --remove-orphans
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
+                echo "rolled back to sha-${TARGET}"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "target image failed health check"
+            exit 1
+          EOF
+
+      - name: Telegram notify
+        if: always()
+        env:
+          BOT: ${{ secrets.DEPLOY_TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.DEPLOY_TELEGRAM_CHAT_ID }}
+          TARGET: ${{ inputs.target_sha }}
+          STATUS: ${{ steps.rollback.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "${STATUS}" = "success" ]; then EMOJI="✅"; else EMOJI="❌"; fi
+          curl -fsS -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" \
+            --data-urlencode "parse_mode=Markdown" \
+            --data-urlencode "text=*Manual rollback to sha-${TARGET}* ${EMOJI}%0A[run](${RUN_URL})"
