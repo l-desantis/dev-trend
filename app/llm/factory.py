@@ -1,6 +1,20 @@
+from functools import lru_cache
+
 from app.config import Settings
 from app.llm.base import LLMAdapter
 from app.llm.embedding_base import EmbeddingAdapter
+from app.llm.rate_limiter import AsyncRateLimiter
+
+
+@lru_cache(maxsize=8)
+def _nim_limiter_for(api_key: str, rpm: int) -> AsyncRateLimiter:
+    return AsyncRateLimiter(max_requests=rpm, window_seconds=60.0)
+
+
+def _maybe_nim_limiter(settings: Settings) -> AsyncRateLimiter | None:
+    if not settings.nim_rate_limit_enabled:
+        return None
+    return _nim_limiter_for(settings.nim_api_key, settings.nim_rate_limit_rpm)
 
 
 def make_llm_adapter(settings: Settings) -> LLMAdapter:
@@ -19,6 +33,7 @@ def make_llm_adapter(settings: Settings) -> LLMAdapter:
                 api_key=settings.nim_api_key,
                 model=settings.nim_llm_model,
                 base_url=settings.nim_base_url,
+                rate_limiter=_maybe_nim_limiter(settings),
             )
         case "openai":
             if not settings.openai_api_key:
@@ -49,6 +64,7 @@ def make_embedding_adapter(settings: Settings) -> EmbeddingAdapter:
                 api_key=settings.nim_api_key,
                 model=settings.nim_embedding_model,
                 base_url=settings.nim_base_url,
+                rate_limiter=_maybe_nim_limiter(settings),
             )
         case "openai":
             if not settings.openai_api_key:

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress CI runs for the same ref when a new push arrives.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (pytest, unit only)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.27"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Sync dev deps
+        run: uv sync --frozen --extra dev
+      - name: pytest
+        env:
+          # Tests in Plan B still use SQLite. Plan D will replace this with a postgres service.
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          LLM_PROVIDER: mock
+          EMBEDDING_PROVIDER: mock
+        run: uv run pytest -m "not integration" -q

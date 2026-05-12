@@ -6,10 +6,11 @@ import pytest
 from app.config import Settings
 
 
-def test_config_v4_defaults() -> None:
-    s = Settings(
-        _env_file=None,  # type: ignore[call-arg]
-    )
+def test_config_v4_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    s = Settings()
     assert s.llm_provider == "ollama"
     assert s.embedding_provider == "ollama"
     assert s.nim_api_key == ""

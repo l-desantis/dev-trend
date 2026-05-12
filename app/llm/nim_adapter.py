@@ -7,6 +7,7 @@ import structlog
 from pydantic import ValidationError
 
 from app.llm.base import LLMAdapter
+from app.llm.rate_limiter import AsyncRateLimiter
 from app.llm.prompts import (
     BRIEF_SYSTEM_PROMPT,
     EXTRACT_SYSTEM_PROMPT,
@@ -29,6 +30,7 @@ class NvidiaNimAdapter(LLMAdapter):
         api_key: str,
         model: str = _DEFAULT_MODEL,
         base_url: str = _DEFAULT_BASE_URL,
+        rate_limiter: "AsyncRateLimiter | None" = None,
     ) -> None:
         self._client = httpx.AsyncClient(
             base_url=base_url,
@@ -36,6 +38,7 @@ class NvidiaNimAdapter(LLMAdapter):
             timeout=httpx.Timeout(60.0, connect=10.0),
         )
         self._model = model
+        self._limiter = rate_limiter
 
     @property
     def model_name(self) -> str:
@@ -59,6 +62,8 @@ class NvidiaNimAdapter(LLMAdapter):
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
+                if self._limiter is not None:
+                    await self._limiter.acquire()
                 response = await self._client.post("/chat/completions", json=payload)
                 if response.status_code >= 500:
                     log.warning(

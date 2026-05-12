@@ -39,6 +39,31 @@ uv run uvicorn app.main:app --reload
 
 The app starts the Telegram bot, the APScheduler jobs, and the FastAPI health endpoint on port 8000.
 
+### Run with Docker Compose (local)
+
+DevTrend ships with a production-shape `docker-compose.yml` and a dev-friendly `docker-compose.override.yml`. With Docker Desktop (or any modern Docker engine) installed:
+
+```bash
+cp .env.example .env       # fill in TELEGRAM_BOT_TOKEN, NIM/OpenAI keys, etc.
+mkdir -p data/dev
+docker compose up -d --build
+curl http://127.0.0.1:8000/health
+```
+
+The override file bind-mounts `./app/` into the container so code edits are picked up after a `docker compose restart app`. The SQLite DB lives at `./data/dev/devtrend.db` on the host.
+
+To stop:
+
+```bash
+docker compose down
+```
+
+To run the production-shape stack (no source bind-mount, image pulled from `ghcr.io/l-desantis/dev-trend`):
+
+```bash
+docker compose -f docker-compose.yml up -d
+```
+
 ---
 
 ## Bot commands

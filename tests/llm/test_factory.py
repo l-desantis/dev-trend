@@ -88,3 +88,35 @@ def test_factory_raises_when_openai_embedding_key_missing() -> None:
     s = _settings(embedding_provider="openai", openai_api_key="")
     with pytest.raises(ValueError, match="OPENAI_API_KEY required"):
         make_embedding_adapter(s)
+
+
+def test_nim_adapters_share_limiter() -> None:
+    s = _settings(
+        llm_provider="nim",
+        embedding_provider="nim",
+        nim_api_key="k",
+        nim_rate_limit_enabled=True,
+    )
+    llm = make_llm_adapter(s)
+    emb = make_embedding_adapter(s)
+    assert llm._limiter is not None
+    assert llm._limiter is emb._limiter
+
+
+def test_disabled_means_no_limiter() -> None:
+    s = _settings(
+        llm_provider="nim",
+        embedding_provider="nim",
+        nim_api_key="k",
+        nim_rate_limit_enabled=False,
+    )
+    llm = make_llm_adapter(s)
+    emb = make_embedding_adapter(s)
+    assert llm._limiter is None
+    assert emb._limiter is None
+
+
+def test_non_nim_provider_has_no_limiter() -> None:
+    s = _settings(llm_provider="openai", openai_api_key="sk-test")
+    adapter = make_llm_adapter(s)
+    assert not hasattr(adapter, "_limiter")
