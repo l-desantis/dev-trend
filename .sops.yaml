@@ -2,11 +2,9 @@
 # The matching private key lives on the VPS at /etc/devtrend/age.key.
 #
 # To add a contributor:
-#   1. Have them generate their own age key (`age-keygen -o ~/.config/sops/age/keys.txt`).
-#   2. Append their public key to the `age:` list below.
-#   3. Re-encrypt: `sops updatekeys secrets.enc.env`.
+#   1. z.
 creation_rules:
   - path_regex: secrets\.enc\.env$
     encrypted_regex: ".*"
     age: >-
-      REPLACE_WITH_VPS_AGE_PUBLIC_KEY
+      age1u2lyay974e597wyh7ynnuyfrvqd4dvaq8kt29ytkmden8f5stf3q7vqj46
