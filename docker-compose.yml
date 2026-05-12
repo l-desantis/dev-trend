@@ -1,0 +1,34 @@
+services:
+  app:
+    image: ghcr.io/l-desantis/dev-trend:${IMAGE_TAG:-latest}
+    container_name: dev-trend-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL so the SQLite file always lives in the volume.
+      DATABASE_URL: sqlite+aiosqlite:////data/devtrend.db
+    volumes:
+      - devtrend_db:/data
+      - ./data:/app/data:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  devtrend_db:
+    name: devtrend_db
