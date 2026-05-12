@@ -54,10 +54,8 @@ jobs:
       - name: Deploy
         id: deploy
         continue-on-error: true
-        env:
-          NEW_SHA: ${{ steps.meta.outputs.short_sha }}
         run: |
-          ssh deploy@${{ secrets.DEPLOY_SSH_HOST }} bash -se <<'EOF'
+          ssh deploy@${{ secrets.DEPLOY_SSH_HOST }} NEW_SHA="${{ steps.meta.outputs.short_sha }}" bash -se <<'EOF'
             set -euo pipefail
             cd /opt/dev-trend
             mkdir -p .deploy
