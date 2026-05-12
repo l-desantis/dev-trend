@@ -1,0 +1,24 @@
+name: Prune GHCR
+
+on:
+  schedule:
+    # Sundays at 04:00 UTC.
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete old sha-* versions, keep latest 10 + `latest`
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: dev-trend
+          package-type: container
+          # Keep the 10 most recent versions that have at least one tag.
+          min-versions-to-keep: 10
+          # Skip any version that has the `latest` tag.
+          ignore-versions: '^latest$'
