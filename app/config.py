@@ -116,6 +116,8 @@ class Settings(BaseSettings):
     nim_base_url: str = "https://integrate.api.nvidia.com/v1"
     nim_llm_model: str = "meta/llama-3.1-70b-instruct"
     nim_embedding_model: str = "nvidia/nv-embedqa-e5-v5"
+    nim_rate_limit_enabled: bool = True
+    nim_rate_limit_rpm: int = 40
 
     # OpenAI
     openai_api_key: str = ""

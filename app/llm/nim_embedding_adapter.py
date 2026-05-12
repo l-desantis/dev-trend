@@ -3,6 +3,7 @@ import httpx
 import structlog
 
 from app.llm.embedding_base import EmbeddingAdapter
+from app.llm.rate_limiter import AsyncRateLimiter
 
 log = structlog.get_logger(__name__)
 
@@ -16,6 +17,7 @@ class NvidiaNimEmbeddingAdapter(EmbeddingAdapter):
         api_key: str,
         model: str = _DEFAULT_MODEL,
         base_url: str = _DEFAULT_BASE_URL,
+        rate_limiter: "AsyncRateLimiter | None" = None,
     ) -> None:
         self._client = httpx.AsyncClient(
             base_url=base_url,
@@ -23,6 +25,7 @@ class NvidiaNimEmbeddingAdapter(EmbeddingAdapter):
             timeout=httpx.Timeout(60.0, connect=10.0),
         )
         self._model = model
+        self._limiter = rate_limiter
 
     @property
     def dim(self) -> int:
@@ -33,6 +36,8 @@ class NvidiaNimEmbeddingAdapter(EmbeddingAdapter):
         return f"nim:{self._model}"
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        if self._limiter is not None:
+            await self._limiter.acquire()
         response = await self._client.post(
             "/embeddings",
             json={"model": self._model, "input": texts, "input_type": "query"},

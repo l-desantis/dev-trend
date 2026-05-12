@@ -19,6 +19,26 @@ def test_nim_embedding_model_name(nim_embedder):
 
 
 @pytest.mark.asyncio
+async def test_embed_calls_rate_limiter():
+    from unittest.mock import AsyncMock
+    from app.llm.rate_limiter import AsyncRateLimiter
+
+    limiter = AsyncRateLimiter(max_requests=10)
+    limiter.acquire = AsyncMock(wraps=limiter.acquire)
+
+    embedder = NvidiaNimEmbeddingAdapter(api_key="test-key", rate_limiter=limiter)
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+    fake_response.raise_for_status = MagicMock()
+    fake_response.json.return_value = {"data": [{"embedding": [0.1] * 1024}]}
+
+    with patch.object(embedder._client, "post", new=AsyncMock(return_value=fake_response)):
+        await embedder.embed(["hello"])
+
+    limiter.acquire.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_nim_embedding_adapter_returns_vectors(nim_embedder):
     fake_response = MagicMock()
     fake_response.status_code = 200
