@@ -215,3 +215,11 @@ __marimo__/
 .claude/
 .agents/
 skills-lock.json
+
+# SOPS / deploy
+.env.local
+.env.production
+# Never commit decrypted secrets or the age key.
+age.key
+*.age.key
+secrets.plain.env
