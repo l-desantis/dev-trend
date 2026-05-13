@@ -12,6 +12,9 @@ services:
   migrate:
     build: .
     image: dev-trend:dev
+    volumes:
+      - ./alembic:/app/alembic:ro
+      - ./alembic.ini:/app/alembic.ini:ro
 
   postgres:
     environment:
