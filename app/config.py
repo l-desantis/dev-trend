@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     playstore_reviews_per_app: int = 200
 
     # Bulk backfill (runs once on startup when DB is empty)
-    backfill_on_empty: bool = True
+    backfill_on_empty: bool = False
     backfill_history_days: int = 30
     backfill_max_items_per_source: int = 1000
 
