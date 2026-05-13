@@ -31,7 +31,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_categories_slug'), 'categories', ['slug'], unique=True)
     op.create_table('maintenance_state',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('last_pruned_at', sa.DateTime(), nullable=True),
+    sa.Column('last_pruned_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('tracked_apps',
@@ -39,7 +39,7 @@ def upgrade() -> None:
     sa.Column('title', sa.String(length=500), nullable=False),
     sa.Column('internal_category', sa.String(length=100), nullable=False),
     sa.Column('ios_app_id', sa.String(length=200), nullable=True),
-    sa.Column('last_seen_at', sa.DateTime(), nullable=False),
+    sa.Column('last_seen_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('app_id')
     )
     op.create_index(op.f('ix_tracked_apps_internal_category'), 'tracked_apps', ['internal_category'], unique=False)
@@ -56,9 +56,9 @@ def upgrade() -> None:
     sa.Column('centroid', postgresql.JSONB(none_as_null=True, astext_type=sa.Text()), nullable=True),
     sa.Column('embedding_model', sa.String(length=150), nullable=True),
     sa.Column('merged_into_id', sa.Integer(), nullable=True),
-    sa.Column('last_evidence_at', sa.DateTime(), nullable=True),
-    sa.Column('last_labelled_at', sa.DateTime(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('last_evidence_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('last_labelled_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['category_id'], ['categories.id'], ),
     sa.ForeignKeyConstraint(['merged_into_id'], ['opportunity_candidates.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -75,8 +75,8 @@ def upgrade() -> None:
     sa.Column('title', sa.String(length=500), nullable=True),
     sa.Column('body', sa.Text(), nullable=True),
     sa.Column('url', sa.String(length=1000), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('ingested_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('ingested_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('metadata_json', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('category_id', sa.Integer(), nullable=True),
     sa.Column('role', sa.String(length=20), nullable=False),
@@ -94,7 +94,7 @@ def upgrade() -> None:
     sa.Column('candidate_id', sa.Integer(), nullable=False),
     sa.Column('headline', sa.String(length=500), nullable=True),
     sa.Column('summary', sa.Text(), nullable=True),
-    sa.Column('generated_at', sa.DateTime(), nullable=False),
+    sa.Column('generated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('model_name', sa.String(length=100), nullable=True),
     sa.Column('evidence_json', postgresql.JSONB(none_as_null=True, astext_type=sa.Text()), nullable=True),
     sa.ForeignKeyConstraint(['candidate_id'], ['opportunity_candidates.id'], ),
@@ -106,7 +106,7 @@ def upgrade() -> None:
     sa.Column('candidate_id', sa.Integer(), nullable=False),
     sa.Column('score_total', sa.Float(), nullable=False),
     sa.Column('score_breakdown_json', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('scored_at', sa.DateTime(), nullable=False),
+    sa.Column('scored_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['candidate_id'], ['opportunity_candidates.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -118,7 +118,7 @@ def upgrade() -> None:
     sa.Column('source_item_id', sa.Integer(), nullable=True),
     sa.Column('signal_type', sa.String(length=50), nullable=False),
     sa.Column('signal_value', sa.Float(), nullable=True),
-    sa.Column('validated_at', sa.DateTime(), nullable=False),
+    sa.Column('validated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('metadata_json', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.ForeignKeyConstraint(['candidate_id'], ['opportunity_candidates.id'], ),
     sa.ForeignKeyConstraint(['source_item_id'], ['source_items.id'], ),
@@ -132,7 +132,7 @@ def upgrade() -> None:
     sa.Column('new_state', sa.String(length=50), nullable=True),
     sa.Column('score_total', sa.Float(), nullable=True),
     sa.Column('was_alerted', sa.Boolean(), nullable=False),
-    sa.Column('recorded_at', sa.DateTime(), nullable=False),
+    sa.Column('recorded_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['candidate_id'], ['opportunity_candidates.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -149,7 +149,7 @@ def upgrade() -> None:
     sa.Column('current_workaround', sa.Text(), nullable=True),
     sa.Column('embedding', postgresql.JSONB(none_as_null=True, astext_type=sa.Text()), nullable=True),
     sa.Column('embedding_model', sa.String(length=150), nullable=True),
-    sa.Column('extracted_at', sa.DateTime(), nullable=False),
+    sa.Column('extracted_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['candidate_id'], ['opportunity_candidates.id'], ),
     sa.ForeignKeyConstraint(['source_item_id'], ['source_items.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
@@ -165,7 +165,7 @@ def upgrade() -> None:
     sa.Column('brief_id', sa.Integer(), nullable=True),
     sa.Column('label', sa.String(length=10), nullable=False),
     sa.Column('chat_id', sa.Integer(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['brief_id'], ['candidate_briefs.id'], ),
     sa.ForeignKeyConstraint(['candidate_id'], ['opportunity_candidates.id'], ),
     sa.PrimaryKeyConstraint('id'),

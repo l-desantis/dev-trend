@@ -1,4 +1,33 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dev-trend-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devtrend
+      POSTGRES_PASSWORD: devtrend
+      POSTGRES_DB: devtrend
+    volumes:
+      - devtrend_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "devtrend"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: ghcr.io/l-desantis/dev-trend:${IMAGE_TAG:-latest}
+    container_name: dev-trend-migrate
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://devtrend:devtrend@postgres:5432/devtrend
+    command: ["uv", "run", "alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   app:
     image: ghcr.io/l-desantis/dev-trend:${IMAGE_TAG:-latest}
     container_name: dev-trend-app
@@ -6,13 +35,14 @@ services:
     env_file:
       - .env
     environment:
-      # Override DATABASE_URL so the SQLite file always lives in the volume.
-      DATABASE_URL: sqlite+aiosqlite:////data/devtrend.db
+      DATABASE_URL: postgresql+asyncpg://devtrend:devtrend@postgres:5432/devtrend
     volumes:
-      - devtrend_db:/data
       - ./data:/app/data:ro
     ports:
       - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 10s
@@ -30,5 +60,5 @@ services:
         max-file: "3"
 
 volumes:
-  devtrend_db:
-    name: devtrend_db
+  devtrend_pgdata:
+    name: devtrend_pgdata

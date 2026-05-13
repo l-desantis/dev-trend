@@ -2,14 +2,19 @@ services:
   app:
     build: .
     image: dev-trend:dev
-    # Bind-mount source so code edits show up without rebuilding.
-    # The `./data/dev:/data` mount overrides the production named volume at the same path
-    # so the SQLite file lives on the host where the developer can inspect it.
     volumes:
       - ./app:/app/app:ro
       - ./data:/app/data:ro
-      - ./data/dev:/data
     environment:
-      # Local DB lives in ./data/dev/devtrend.db on the host.
-      DATABASE_URL: sqlite+aiosqlite:////data/devtrend.db
+      DATABASE_URL: postgresql+asyncpg://devtrend:devtrend@postgres:5432/devtrend
       LOG_LEVEL: DEBUG
+
+  migrate:
+    build: .
+    image: dev-trend:dev
+
+  postgres:
+    environment:
+      POSTGRES_USER: devtrend
+      POSTGRES_PASSWORD: devtrend
+      POSTGRES_DB: devtrend

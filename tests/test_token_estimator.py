@@ -48,20 +48,17 @@ def test_token_estimate_total_sums_stages():
 
 import pytest
 
-from app.db import _get_session_factory, init_db, reset_engine
+from app.db import _get_session_factory
 from app.config import get_settings
 from app.models import OpportunityCandidate, SourceItem
 from app.pipeline.token_estimator import estimate_tokens
 
 
 @pytest.mark.asyncio
-async def test_estimate_tokens_counts_pending_extraction(tmp_path, monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path / 'est.db'}")
+async def test_estimate_tokens_counts_pending_extraction(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "mock")
     monkeypatch.setenv("EMBEDDING_PROVIDER", "mock")
     get_settings.cache_clear()
-    reset_engine()
-    await init_db()
 
     factory = _get_session_factory()
     async with factory() as s:

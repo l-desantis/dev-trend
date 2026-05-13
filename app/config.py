@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5"
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./devtrend.db"
+    database_url: str = "postgresql+asyncpg://devtrend:devtrend@postgres:5432/devtrend"
 
     # Data Sources
     github_token: str = ""

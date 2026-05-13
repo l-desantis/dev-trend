@@ -11,7 +11,7 @@ import structlog
 from app.db import get_session
 from app.ingestion.http_utils import request_with_retry
 from app.models import SourceItem
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import CursorResult
 
 log = structlog.get_logger(__name__)
@@ -107,7 +107,7 @@ class BaseConnector(ABC):
                 }
                 for item in items
             ]
-            stmt = sqlite_insert(SourceItem).values(rows).on_conflict_do_nothing(
+            stmt = pg_insert(SourceItem).values(rows).on_conflict_do_nothing(
                 index_elements=["source_type", "external_id"]
             )
             result = cast(CursorResult[Any], await session.execute(stmt))

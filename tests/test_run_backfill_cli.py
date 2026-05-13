@@ -10,11 +10,11 @@ from app.models import SourceItem
 
 
 def test_run_backfill_cli_returns_report_with_painpoints(
-    tmp_path: pytest.TempPathFactory,
     monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
 ) -> None:
     """main() returns a BackfillReport and the pipeline creates ≥1 PainPoint."""
-    db_url = f"sqlite+aiosqlite:///{tmp_path / 'backfill_test.db'}"
+    db_url = database_url
 
     async def _fake_run(self, since=None, until=None) -> RunStatus:
         from app.db import get_session
@@ -51,11 +51,11 @@ def test_run_backfill_cli_returns_report_with_painpoints(
 
 
 def test_run_backfill_cli_dry_run_skips_pipeline(
-    tmp_path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
 ) -> None:
     """--dry-run ingests but does NOT create pain points; report carries an estimate."""
-    db_url = f"sqlite+aiosqlite:///{tmp_path / 'dryrun.db'}"
+    db_url = database_url
 
     async def _fake_run(self, since=None, until=None) -> RunStatus:
         from app.db import get_session

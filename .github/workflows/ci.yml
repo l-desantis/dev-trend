@@ -18,6 +18,20 @@ jobs:
   test:
     name: Tests (pytest, unit only)
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: devtrend
+          POSTGRES_PASSWORD: devtrend
+          POSTGRES_DB: devtrend_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U devtrend"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -29,8 +43,7 @@ jobs:
         run: uv sync --frozen --extra dev
       - name: pytest
         env:
-          # Tests in Plan B still use SQLite. Plan D will replace this with a postgres service.
-          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          DATABASE_URL: postgresql+asyncpg://devtrend:devtrend@localhost:5432/devtrend_test
           LLM_PROVIDER: mock
           EMBEDDING_PROVIDER: mock
         run: uv run pytest -m "not integration" -q

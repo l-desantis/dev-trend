@@ -7,15 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import Settings
 from app.llm.mock_adapter import MockLLMAdapter
 from app.llm.mock_embedding_adapter import MockEmbeddingAdapter
-from app.models import Base, OpportunityCandidate, PainPoint, SourceItem
+from app.models import OpportunityCandidate, PainPoint, SourceItem
 from app.pipeline.orchestrator import run_pipeline
 
 
 @pytest.fixture
-async def session_factory():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def session_factory(database_url: str) -> async_sessionmaker:
+    engine = create_async_engine(database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     yield factory
     await engine.dispose()

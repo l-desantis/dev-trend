@@ -2,9 +2,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
-    Boolean, DateTime, Float, ForeignKey, Index, Integer,
+    Boolean, Float, ForeignKey, Index, Integer,
     String, Text, UniqueConstraint,
 )
+from sqlalchemy import DateTime as _BaseDateTime
+
+# asyncpg requires timezone-aware datetimes for TIMESTAMPTZ columns; shadow the name so all
+# mapped_column(DateTime, ...) calls automatically produce TIMESTAMP WITH TIME ZONE.
+DateTime = _BaseDateTime(timezone=True)
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
