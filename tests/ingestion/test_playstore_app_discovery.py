@@ -5,12 +5,11 @@ from pathlib import Path
 
 import pytest
 import yaml
-from sqlalchemy import StaticPool, select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.ingestion.playstore_app_discovery import AppListing, load_seed_apps, refresh_app_list
-from app.models import Base, TrackedApp
+from app.models import TrackedApp
 
 
 @pytest.fixture
@@ -35,17 +34,13 @@ def tmp_seed(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-async def session():
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with Session() as s:
-        yield s
+async def session(database_url: str) -> AsyncSession:
+    engine = create_async_engine(database_url)
+    async with async_sessionmaker(engine, expire_on_commit=False)() as s:
+        try:
+            yield s
+        finally:
+            await s.rollback()
     await engine.dispose()
 
 

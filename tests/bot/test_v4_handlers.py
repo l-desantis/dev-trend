@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import (
-    Base,
     CandidateScoreHistory,
     Category,
     OpportunityCandidate,
@@ -16,16 +15,6 @@ from app.models import (
     PainPoint,
 )
 
-
-@pytest.fixture
-async def session() -> AsyncSession:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
 
 
 def _make_update(text: str = "/opportunities") -> MagicMock:
@@ -102,14 +91,12 @@ async def test_opportunities_returns_top_n(session: AsyncSession, monkeypatch) -
     assert "problem" in text.lower() or "#1" in text
 
 
-async def test_opportunities_handles_empty_db(monkeypatch) -> None:
+async def test_opportunities_handles_empty_db(monkeypatch, database_url: str) -> None:
     monkeypatch.setenv("SPECIFICITY_GATE", "2")
     from app.config import get_settings
     get_settings.cache_clear()
 
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = create_async_engine(database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     update = _make_update()
@@ -242,14 +229,12 @@ async def test_emerging_filters_by_state(session: AsyncSession, monkeypatch) -> 
     assert "s\\=70" not in text
 
 
-async def test_emerging_empty_returns_friendly_message(monkeypatch) -> None:
+async def test_emerging_empty_returns_friendly_message(monkeypatch, database_url: str) -> None:
     monkeypatch.setenv("SPECIFICITY_GATE", "2")
     from app.config import get_settings
     get_settings.cache_clear()
 
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = create_async_engine(database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     update = _make_update()

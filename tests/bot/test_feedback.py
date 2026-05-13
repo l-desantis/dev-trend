@@ -5,21 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.feedback import cmd_feedback_callback
-from app.models import Base, CandidateFeedback, OpportunityCandidate
-
-
-@pytest.fixture
-async def session() -> AsyncSession:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
+from app.models import CandidateBrief, CandidateFeedback, OpportunityCandidate
 
 
 def _make_callback_update(data: str, user_id: int = 42, chat_id: int = 99) -> MagicMock:
@@ -108,10 +97,14 @@ async def test_feedback_multi_card_attributes_correct_brief(session: AsyncSessio
     c1 = OpportunityCandidate(problem_statement="candidate 1", specificity=3)
     c2 = OpportunityCandidate(problem_statement="candidate 2", specificity=3)
     session.add_all([c1, c2])
+    await session.flush()
+
+    brief = CandidateBrief(candidate_id=c2.id, headline="Brief for c2")
+    session.add(brief)
     await session.commit()
 
-    # Callback data for candidate #2 with brief_id=42 — brief_id comes from the button data
-    update = _make_callback_update(f"fb:up:{c2.id}:42", user_id=7, chat_id=99)
+    # Callback data for candidate #2 — brief_id comes from the button data
+    update = _make_callback_update(f"fb:up:{c2.id}:{brief.id}", user_id=7, chat_id=99)
     ctx = MagicMock()
 
     with patch("app.bot.feedback.get_session") as mock_gs:
@@ -123,7 +116,7 @@ async def test_feedback_multi_card_attributes_correct_brief(session: AsyncSessio
     rows = result.scalars().all()
     assert len(rows) == 1
     assert rows[0].candidate_id == c2.id
-    assert rows[0].brief_id == 42
+    assert rows[0].brief_id == brief.id
 
 
 async def test_feedback_unknown_candidate_ignored_gracefully(session: AsyncSession) -> None:

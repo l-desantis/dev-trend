@@ -255,14 +255,14 @@ async def _run(args: argparse.Namespace, progress: _BackfillProgress) -> None:
 
     # ── 2. DB init ───────────────────────────────────────────────────────────
     _section("2/6  Database init")
-    from app.db import init_db, reset_engine
+    from app.db import check_db_reachable, reset_engine
     reset_engine()
-    log.info("initialising database …")
+    log.info("checking database reachability …")
     try:
-        await init_db()
+        await check_db_reachable()
         log.info("database ready")
     except Exception:
-        log.error("init_db failed\n%s", traceback.format_exc())
+        log.error("check_db_reachable failed\n%s", traceback.format_exc())
         sys.exit(1)
 
     # ── 3. Adapters ──────────────────────────────────────────────────────────

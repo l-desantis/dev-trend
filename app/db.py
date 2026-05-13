@@ -30,9 +30,11 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def init_db() -> None:
-    async with _get_engine().begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def check_db_reachable() -> None:
+    """Fail fast if the database is unreachable; rely on Alembic for schema."""
+    from sqlalchemy import text
+    async with _get_engine().connect() as conn:
+        await conn.execute(text("SELECT 1"))
 
 
 def reset_engine() -> None:

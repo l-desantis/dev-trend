@@ -59,29 +59,19 @@ async def test_nim_embedding_adapter_returns_vectors(nim_embedder):
 
 
 @pytest.mark.asyncio
-async def test_identity_resolution_filters_by_embedding_model():
+async def test_identity_resolution_filters_by_embedding_model(database_url: str):
     """Candidates with different embedding_model must not match cross-model pain points."""
     from datetime import UTC, datetime
     from unittest.mock import AsyncMock, MagicMock, patch
 
     import numpy as np
-    from sqlalchemy import StaticPool, event
-    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-    from app.models import Base, OpportunityCandidate, PainPoint, SourceItem
+    from app.models import OpportunityCandidate, PainPoint, SourceItem
     from app.pipeline.identity_resolution import run_identity_resolution
 
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    engine = create_async_engine(database_url)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
 
     async with Session() as session:
         # Seed a source item

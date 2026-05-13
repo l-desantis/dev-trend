@@ -2,7 +2,7 @@ from pathlib import Path
 
 import structlog
 import yaml
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Category
@@ -26,7 +26,7 @@ async def sync_categories_from_yaml(
     categories = data.get("categories", [])
     for cat in categories:
         stmt = (
-            sqlite_insert(Category)
+            pg_insert(Category)
             .values(
                 slug=cat["slug"],
                 name=cat["name"],

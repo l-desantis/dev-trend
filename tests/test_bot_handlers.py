@@ -5,7 +5,6 @@ from telegram.ext import ApplicationHandlerStop
 
 from app.bot.handlers import help_handler, sources_handler, start_handler
 from app.bot.middleware import _allowlist_check
-from app.db import init_db
 from app.ingestion.base import ConnectorRunRegistry, RunStatus
 
 
@@ -110,7 +109,7 @@ class TestHelpHandler:
 
 class TestSourcesHandler:
     async def test_empty_registry_never_run(self, mock_context: MagicMock) -> None:
-        await init_db()
+
         mock_context.application = MagicMock()
         mock_context.application.bot_data = {}
         update = _make_update(chat_id=12345)
@@ -120,7 +119,7 @@ class TestSourcesHandler:
         assert "never run" in text
 
     async def test_ok_status_shows_items(self, mock_context: MagicMock) -> None:
-        await init_db()
+
         registry = ConnectorRunRegistry()
         registry.mark_running("github")
         registry.mark_success("github", items=42, duration=1.5)
@@ -180,7 +179,7 @@ class TestSourcesRegistryTimestamp:
     async def test_sources_shows_last_run_timestamp(self, mock_context: MagicMock) -> None:
         from datetime import datetime, timezone
 
-        await init_db()
+
         registry = ConnectorRunRegistry()
         registry.mark_running("github")
         registry.mark_success("github", items=10, duration=2.0)

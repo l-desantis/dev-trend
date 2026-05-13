@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from app.api.routes_health import router as health_router
 from app.config import get_settings
-from app.db import get_session, init_db
+from app.db import check_db_reachable, get_session
 
 
 def _configure_logging() -> None:
@@ -36,8 +36,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log = structlog.get_logger("main")
     settings = get_settings()
 
-    await init_db()
-    log.info("Database initialised", component="main")
+    await check_db_reachable()
+    log.info("Database reachable", component="main")
 
     from app.db_helpers.categories import sync_categories_from_yaml
     async with get_session() as session:

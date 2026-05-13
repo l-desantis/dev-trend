@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import Settings
 from app.llm.mock_adapter import MockLLMAdapter
 from app.models import (
-    Base,
     CandidateScoreHistory,
     LifecycleEvent,
     OpportunityCandidate,
@@ -26,10 +25,8 @@ from app.bot.v4_notifications import emit_lifecycle_alerts, run_digest_job
 
 
 @pytest.fixture
-async def engine():
-    eng = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with eng.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def engine(database_url: str):
+    eng = create_async_engine(database_url)
     yield eng
     await eng.dispose()
 

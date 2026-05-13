@@ -2,12 +2,10 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import StaticPool, delete, select, text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import delete, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import (
-    Base,
     CandidateValidation,
     LifecycleEvent,
     MaintenanceState,
@@ -18,22 +16,9 @@ from app.models import (
 
 
 @pytest.fixture
-async def Session():
-    from sqlalchemy import event
-
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-
-    @event.listens_for(engine.sync_engine, "connect")
-    def _fk_pragma(conn, _record):
-        conn.execute("PRAGMA foreign_keys=ON")
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+async def Session(database_url: str) -> async_sessionmaker:
+    engine = create_async_engine(database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
     yield factory
     await engine.dispose()
 

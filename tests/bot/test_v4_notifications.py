@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.v4_notifications import (
     build_digest_message,
@@ -14,7 +14,6 @@ from app.bot.v4_notifications import (
 )
 from app.config import Settings
 from app.models import (
-    Base,
     CandidateBrief,
     CandidateScoreHistory,
     LifecycleEvent,
@@ -22,16 +21,6 @@ from app.models import (
 )
 from app.pipeline.lifecycle import LifecycleTransition
 
-
-@pytest.fixture
-async def session() -> AsyncSession:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
 
 
 def _settings(**kwargs) -> Settings:
