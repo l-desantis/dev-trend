@@ -65,8 +65,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ "${STATUS}" = "success" ]; then EMOJI="✅"; else EMOJI="❌"; fi
-          TEXT="<b>Manual rollback to sha-${TARGET}</b> ${EMOJI}
-<a href=\"${RUN_URL}\">run</a>"
+          TEXT=$(printf '<b>Manual rollback to sha-%s</b> %s\n<a href="%s">run</a>' "${TARGET}" "${EMOJI}" "${RUN_URL}")
           curl -fsS -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
             --data-urlencode "chat_id=${CHAT}" \
             --data-urlencode "parse_mode=HTML" \

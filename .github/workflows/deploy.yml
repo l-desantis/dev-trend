@@ -116,9 +116,7 @@ jobs:
           SUBJECT: ${{ steps.meta.outputs.commit_subject }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          TEXT="<b>DevTrend deployed</b> ✅
-<code>sha-${SHA}</code> — ${SUBJECT}
-<a href=\"${RUN_URL}\">run</a>"
+          TEXT=$(printf '<b>DevTrend deployed</b> ✅\n<code>sha-%s</code> — %s\n<a href="%s">run</a>' "${SHA}" "${SUBJECT}" "${RUN_URL}")
           curl -fsS -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
             --data-urlencode "chat_id=${CHAT}" \
             --data-urlencode "parse_mode=HTML" \
@@ -133,10 +131,7 @@ jobs:
           SUBJECT: ${{ steps.meta.outputs.commit_subject }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          TEXT="<b>DevTrend deploy rolled back</b> ⚠️
-<code>sha-${SHA}</code> failed health check — restored previous image.
-${SUBJECT}
-<a href=\"${RUN_URL}\">run</a>"
+          TEXT=$(printf '<b>DevTrend deploy rolled back</b> ⚠️\n<code>sha-%s</code> failed health check — restored previous image.\n%s\n<a href="%s">run</a>' "${SHA}" "${SUBJECT}" "${RUN_URL}")
           curl -fsS -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
             --data-urlencode "chat_id=${CHAT}" \
             --data-urlencode "parse_mode=HTML" \
@@ -150,9 +145,7 @@ ${SUBJECT}
           SHA: ${{ steps.meta.outputs.short_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          TEXT="<b>DevTrend deploy FAILED — manual intervention required</b> ❌
-<code>sha-${SHA}</code> failed health check and rollback also failed.
-<a href=\"${RUN_URL}\">run</a>"
+          TEXT=$(printf '<b>DevTrend deploy FAILED — manual intervention required</b> ❌\n<code>sha-%s</code> failed health check and rollback also failed.\n<a href="%s">run</a>' "${SHA}" "${RUN_URL}")
           curl -fsS -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
             --data-urlencode "chat_id=${CHAT}" \
             --data-urlencode "parse_mode=HTML" \
