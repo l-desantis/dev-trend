@@ -22,7 +22,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://devtrend:devtrend@postgres:5432/devtrend
-    command: ["uv", "run", "alembic", "upgrade", "head"]
+    command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
         condition: service_healthy

@@ -36,6 +36,8 @@ WORKDIR /app
 
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --from=builder --chown=app:app /app/app /app/app
+COPY --chown=app:app alembic/ /app/alembic/
+COPY --chown=app:app alembic.ini /app/alembic.ini
 
 # Data directory for SQLite + read-only YAML config bind-mount.
 RUN mkdir -p /data /app/data && chown -R app:app /data /app/data
