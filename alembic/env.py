@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # Make `app.*` importable; alembic.ini already has prepend_sys_path = .
 from app.config import get_settings
-from app.db import Base  # NOTE: confirm this import path in Task 4 Step 1.
+from app.models import Base  # all model classes are in this module; Base.metadata is complete
 
 config = context.config
 

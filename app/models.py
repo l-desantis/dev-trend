@@ -5,7 +5,7 @@ from sqlalchemy import (
     Boolean, DateTime, Float, ForeignKey, Index, Integer,
     String, Text, UniqueConstraint,
 )
-from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
