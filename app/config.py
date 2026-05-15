@@ -62,13 +62,19 @@ class Settings(BaseSettings):
     github_token: str = ""
     reddit_client_id: str = ""
     reddit_client_secret: str = ""
-    reddit_user_agent: str = "DevTrend/1.0 (by /u/yourhandle)"
+    reddit_user_agent: str = "DevTrend/1.0 (research-only; contact: you@example.com)"
     # Ingestion behavior
     reddit_subreddits: list[str] = [
         "startups", "SideProject", "Entrepreneur",
         "reactnative", "androiddev", "iOSProgramming",
-        "AppIdeas"
+        "AppIdeas",
     ]
+    # Minimum spacing between *any* two Reddit HTTP calls (between subs in the
+    # scheduled path AND between pagination pages in backfill). 6.0s = 60s / 10
+    # req → enforces the ≤10 req/min ceiling globally for the connector.
+    reddit_delay_seconds: float = 6.0
+    reddit_cron_interval_hours: int = 12
+    reddit_max_subreddits_per_run: int | None = None  # None = all
     github_star_threshold: int = 50
     github_search_lookback_days: int = 14
     ingestion_http_timeout_s: float = 20.0

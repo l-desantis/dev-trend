@@ -43,7 +43,7 @@ def build_scheduler(
 
     scheduler.add_job(_make_job("github"), IntervalTrigger(hours=6), id="github_ingestion", max_instances=1, coalesce=True, misfire_grace_time=300)
     scheduler.add_job(_make_job("hn"), IntervalTrigger(hours=6), id="hn_ingestion", max_instances=1, coalesce=True, misfire_grace_time=300)
-    scheduler.add_job(_make_job("reddit"), IntervalTrigger(hours=12), id="reddit_ingestion", max_instances=1, coalesce=True, misfire_grace_time=300)
+    scheduler.add_job(_make_job("reddit"), IntervalTrigger(hours=settings.reddit_cron_interval_hours), id="reddit_ingestion", max_instances=1, coalesce=True, misfire_grace_time=300)
 
     async def _pipeline_job() -> None:
         from app.llm.factory import make_embedding_adapter, make_llm_adapter

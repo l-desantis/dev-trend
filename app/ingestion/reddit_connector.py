@@ -4,6 +4,17 @@ from datetime import UTC, datetime
 from app.config import get_settings
 from app.ingestion.base import BaseConnector, NormalizedItem
 
+_REDDIT_BACKOFF_STATUSES = {429, 403}
+
+
+class RedditRateLimited(Exception):
+    """Raised when Reddit returns 429 or 403; abort the current run, no retry."""
+
+    def __init__(self, status_code: int, subreddit: str) -> None:
+        super().__init__(f"Reddit returned {status_code} for r/{subreddit}")
+        self.status_code = status_code
+        self.subreddit = subreddit
+
 
 class RedditConnector(BaseConnector):
     source_type = "reddit"
@@ -11,29 +22,48 @@ class RedditConnector(BaseConnector):
     async def fetch(self, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
         settings = get_settings()
         headers = {"User-Agent": settings.reddit_user_agent}
-        posts = []
+        delay = settings.reddit_delay_seconds
+        subs = settings.reddit_subreddits
+        cap = settings.reddit_max_subreddits_per_run
+        if cap is not None and cap >= 0:
+            subs = subs[:cap]
 
-        for sub in settings.reddit_subreddits:
-            if since is None:
-                # Regular scheduled run: single page, 50 items
-                resp = await self._request_with_retry(
-                    "GET",
-                    f"https://www.reddit.com/r/{sub}/new.json",
-                    headers=headers,
-                    params={"limit": 50},
+        posts: list[dict] = []
+        for sub in subs:
+            try:
+                if since is None:
+                    sub_posts = await self._fetch_sub_latest(sub, headers)
+                else:
+                    sub_posts = await self._fetch_sub_backfill(sub, headers, since, delay)
+            except RedditRateLimited as exc:
+                self.log.warning(
+                    "Reddit rate limited — skipping remaining subreddits",
+                    status_code=exc.status_code,
+                    subreddit=exc.subreddit,
+                    subreddits_completed=subs.index(sub),
+                    subreddits_total=len(subs),
+                    items_so_far=len(posts),
                 )
-                children = resp.json().get("data", {}).get("children", [])
-                posts.extend(children)
-            else:
-                # Backfill: paginate via after-cursor until since or 1000-item ceiling
-                sub_posts = await self._fetch_sub_backfill(sub, headers, since)
-                posts.extend(sub_posts)
-            await asyncio.sleep(1)
+                break
+            posts.extend(sub_posts)
+            await asyncio.sleep(delay)
 
         return posts
 
+    async def _fetch_sub_latest(self, sub: str, headers: dict) -> list[dict]:
+        resp = await self._request_with_retry(
+            "GET",
+            f"https://www.reddit.com/r/{sub}/new.json",
+            headers=headers,
+            params={"limit": 50},
+            no_retry_statuses=_REDDIT_BACKOFF_STATUSES,
+        )
+        if resp.status_code in _REDDIT_BACKOFF_STATUSES:
+            raise RedditRateLimited(resp.status_code, sub)
+        return resp.json().get("data", {}).get("children", [])
+
     async def _fetch_sub_backfill(
-        self, sub: str, headers: dict, since: datetime
+        self, sub: str, headers: dict, since: datetime, delay: float
     ) -> list[dict]:
         all_posts: list[dict] = []
         after: str | None = None
@@ -49,7 +79,11 @@ class RedditConnector(BaseConnector):
                 f"https://www.reddit.com/r/{sub}/new.json",
                 headers=headers,
                 params=params,
+                no_retry_statuses=_REDDIT_BACKOFF_STATUSES,
             )
+            if resp.status_code in _REDDIT_BACKOFF_STATUSES:
+                raise RedditRateLimited(resp.status_code, sub)
+
             data = resp.json().get("data", {})
             children = data.get("children", [])
             if not children:
@@ -58,7 +92,6 @@ class RedditConnector(BaseConnector):
             all_posts.extend(children)
             after = data.get("after")
 
-            # Stop when we reach posts older than since
             last_data = children[-1].get("data", {})
             last_created = last_data.get("created_utc")
             if last_created is not None:
@@ -70,7 +103,7 @@ class RedditConnector(BaseConnector):
             if not after:
                 break
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(delay)
 
         if oldest_age_days is not None:
             self.log.info(

@@ -72,3 +72,18 @@ def test_scheduler_ios_rss_registered_when_enabled() -> None:
 
     job_ids = {job.id for job in scheduler.get_jobs()}
     assert "ios_rss_ingestion" in job_ids
+
+
+def test_reddit_job_uses_configured_interval() -> None:
+    client = httpx.AsyncClient()
+    registry = ConnectorRunRegistry()
+    connectors = [
+        GithubConnector(client, registry),
+        HNConnector(client, registry),
+        RedditConnector(client, registry),
+    ]
+    settings = Settings(_env_file=None, reddit_cron_interval_hours=24)  # type: ignore[call-arg]
+    scheduler = build_scheduler(connectors, registry, settings)
+
+    reddit_job = next(j for j in scheduler.get_jobs() if j.id == "reddit_ingestion")
+    assert reddit_job.trigger.interval.total_seconds() == 24 * 3600
