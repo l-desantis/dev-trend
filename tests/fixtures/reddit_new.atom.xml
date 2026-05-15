@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en-US">
+  <category term="startups" label="r/startups"/>
+  <updated>2026-04-24T12:30:00+00:00</updated>
+  <id>/r/startups/new/.rss</id>
+  <link rel="self" href="https://www.reddit.com/r/startups/new/.rss" type="application/atom+xml"/>
+  <link rel="alternate" href="https://www.reddit.com/r/startups/new" type="text/html"/>
+  <title>newest submissions : startups</title>
+  <entry>
+    <author>
+      <name>/u/founder1</name>
+      <uri>https://www.reddit.com/user/founder1</uri>
+    </author>
+    <category term="startups" label="r/startups"/>
+    <content type="html">&lt;!-- SC_OFF --&gt;&lt;div class="md"&gt;&lt;p&gt;Built an ai wellness coaching app with habit tracker features. Looking for feedback.&lt;/p&gt;&lt;/div&gt;&lt;!-- SC_ON --&gt;</content>
+    <id>t3_abc001</id>
+    <link href="https://www.reddit.com/r/startups/comments/abc001/launched_my_ai_habit_tracker/"/>
+    <updated>2026-04-24T12:00:00+00:00</updated>
+    <published>2026-04-24T12:00:00+00:00</published>
+    <title>Launched my AI habit tracker with streak gamification</title>
+  </entry>
+  <entry>
+    <author>
+      <name>/u/hacker42</name>
+      <uri>https://www.reddit.com/user/hacker42</uri>
+    </author>
+    <category term="SideProject" label="r/SideProject"/>
+    <content type="html">&lt;!-- SC_OFF --&gt;&lt;div class="md"&gt;&lt;p&gt;Running local llm and edge ai app on my phone. Performance is surprisingly good.&lt;/p&gt;&lt;/div&gt;&lt;!-- SC_ON --&gt;</content>
+    <id>t3_abc002</id>
+    <link href="https://www.reddit.com/r/SideProject/comments/abc002/local_llm_running/"/>
+    <updated>2026-04-24T13:00:00+00:00</updated>
+    <published>2026-04-24T13:00:00+00:00</published>
+    <title>Local LLM running on-device — my experience with private ai</title>
+  </entry>
+  <entry>
+    <author>
+      <name>/u/weekender</name>
+      <uri>https://www.reddit.com/user/weekender</uri>
+    </author>
+    <category term="SideProject" label="r/SideProject"/>
+    <content type="html">&lt;!-- SC_OFF --&gt;&lt;div class="md"&gt;&lt;p&gt;Just a tiny mood tracker I built over the weekend.&lt;/p&gt;&lt;/div&gt;&lt;!-- SC_ON --&gt;</content>
+    <id>t3_abc003</id>
+    <link href="https://www.reddit.com/r/SideProject/comments/abc003/minimalist_mood_tracker/"/>
+    <updated>2026-04-24T14:00:00+00:00</updated>
+    <published>2026-04-24T14:00:00+00:00</published>
+    <title>Side project: minimalist mood tracker</title>
+  </entry>
+</feed>
