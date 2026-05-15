@@ -44,3 +44,18 @@ def test_env_example_covers_required_settings() -> None:
     }
     missing = required - env_keys
     assert not missing, f"missing in .env.example: {missing}"
+
+
+def test_reddit_settings_defaults() -> None:
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.reddit_delay_seconds == 6.0
+    assert s.reddit_cron_interval_hours == 12
+    assert s.reddit_max_subreddits_per_run is None
+
+
+def test_reddit_max_subreddits_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REDDIT_MAX_SUBREDDITS_PER_RUN", "3")
+    monkeypatch.setenv("REDDIT_DELAY_SECONDS", "0.5")
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.reddit_max_subreddits_per_run == 3
+    assert s.reddit_delay_seconds == 0.5
