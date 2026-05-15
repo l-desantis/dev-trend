@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     github_token: str = ""
     reddit_client_id: str = ""
     reddit_client_secret: str = ""
-    reddit_user_agent: str = "DevTrend/1.0 (research-only; contact: you@example.com)"
+    reddit_user_agent: str = "devtrend/1.0"
     # Ingestion behavior
     reddit_subreddits: list[str] = [
         "startups", "SideProject", "Entrepreneur",
