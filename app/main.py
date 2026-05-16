@@ -20,7 +20,7 @@ def _configure_logging() -> None:
 
     # Silence noisy third-party loggers so app.* events stay readable.
     # httpx also logs outbound URLs which include the Telegram bot token.
-    for name in ("uvicorn.access", "httpx", "httpcore", "telegram", "telegram.ext"):
+    for name in ("uvicorn.access", "httpx", "httpcore"):
         logging.getLogger(name).setLevel(logging.WARNING)
 
     structlog.configure(
