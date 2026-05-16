@@ -1,9 +1,12 @@
 """v4 bot command handlers: /opportunities, /opportunity, /categories, /category, /emerging."""
 from __future__ import annotations
 
+import structlog
 from sqlalchemy import and_, func, select
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+
+_log = structlog.get_logger(__name__)
 
 from app.bot.formatter import (
     lifecycle_arrow,
@@ -72,6 +75,7 @@ async def cmd_opportunities(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
     """/opportunities [N] — Top N candidates by current score."""
     if not update.effective_message:
         return
+    _log.info("cmd_opportunities", chat_id=update.effective_chat.id if update.effective_chat else None)
 
     settings = get_settings()
     n = _DEFAULT_TOP_N
@@ -139,6 +143,7 @@ async def cmd_opportunity(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     """/opportunity <id> — Full scorecard for a candidate."""
     if not update.effective_message:
         return
+    _log.info("cmd_opportunity", chat_id=update.effective_chat.id if update.effective_chat else None, candidate_id=ctx.args[0] if ctx.args else None)
 
     if not ctx.args:
         await update.effective_message.reply_text(
@@ -245,6 +250,7 @@ async def cmd_categories(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
     """/categories — Overview by category with active-candidate counts."""
     if not update.effective_message:
         return
+    _log.info("cmd_categories", chat_id=update.effective_chat.id if update.effective_chat else None)
 
     settings = get_settings()
 
@@ -302,6 +308,7 @@ async def cmd_category(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """/category <slug> — Top candidates in a named category."""
     if not update.effective_message:
         return
+    _log.info("cmd_category", chat_id=update.effective_chat.id if update.effective_chat else None, slug=ctx.args[0].lower() if ctx.args else None)
 
     settings = get_settings()
 
@@ -385,6 +392,7 @@ async def cmd_emerging(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """/emerging — Newly-discovered opportunities (lifecycle_state='emerging')."""
     if not update.effective_message:
         return
+    _log.info("cmd_emerging", chat_id=update.effective_chat.id if update.effective_chat else None)
 
     settings = get_settings()
 

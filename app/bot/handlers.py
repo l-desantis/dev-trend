@@ -1,6 +1,9 @@
 """Bot command handlers."""
+import structlog
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+
+_log = structlog.get_logger(__name__)
 
 
 _START_TEXT = (
@@ -23,16 +26,19 @@ _HELP_TEXT = (
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _log.info("cmd_start", chat_id=update.effective_chat.id if update.effective_chat else None)
     if update.effective_message:
         await update.effective_message.reply_text(_START_TEXT, parse_mode="MarkdownV2")
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _log.info("cmd_help", chat_id=update.effective_chat.id if update.effective_chat else None)
     if update.effective_message:
         await update.effective_message.reply_text(_HELP_TEXT, parse_mode="MarkdownV2")
 
 
 async def sources_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _log.info("cmd_sources", chat_id=update.effective_chat.id if update.effective_chat else None)
     if not update.effective_message:
         return
 
