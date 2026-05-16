@@ -17,6 +17,12 @@ def _configure_logging() -> None:
     settings = get_settings()
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
     logging.basicConfig(format="%(message)s", level=log_level)
+
+    # Silence noisy third-party loggers so app.* events stay readable.
+    # httpx also logs outbound URLs which include the Telegram bot token.
+    for name in ("uvicorn.access", "httpx", "httpcore", "telegram", "telegram.ext"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
     structlog.configure(
         processors=[
             structlog.stdlib.filter_by_level,
