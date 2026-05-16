@@ -65,9 +65,21 @@ class Settings(BaseSettings):
     reddit_user_agent: str = "devtrend/1.0"
     # Ingestion behavior
     reddit_subreddits: list[str] = [
-        "startups", "SideProject", "Entrepreneur",
-        "reactnative", "androiddev", "iOSProgramming",
-        "AppIdeas",
+        "startups",
+    "SideProject",
+    "Entrepreneur",
+    "androiddev",
+    "iOSProgramming",
+    "AppIdeas",
+    "SomebodyMakeThis",
+    "nocode",
+    "automation",
+    "smallbusiness",
+    "webdev",
+    "gamedev",
+    "AppDevelopers",
+    "ProductivityApps",
+    "ADHD",
     ]
     # Minimum spacing between *any* two Reddit HTTP calls (between subs in the
     # scheduled path AND between pagination pages in backfill). 6.0s = 60s / 10
