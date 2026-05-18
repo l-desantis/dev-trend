@@ -89,6 +89,7 @@ def register_command_handlers(application: Application) -> None:
         cmd_opportunity,
     )
     from app.bot.feedback import cmd_feedback_callback
+    from app.bot.details import cmd_view_callback
     from telegram.ext import CallbackQueryHandler
 
     application.add_handler(CommandHandler("start", start_handler))
@@ -100,3 +101,4 @@ def register_command_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("category", cmd_category))
     application.add_handler(CommandHandler("emerging", cmd_emerging))
     application.add_handler(CallbackQueryHandler(cmd_feedback_callback, pattern=r"^fb:"))
+    application.add_handler(CallbackQueryHandler(cmd_view_callback, pattern=r"^view:"))
