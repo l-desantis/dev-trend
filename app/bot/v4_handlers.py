@@ -139,67 +139,50 @@ async def cmd_opportunities(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
     await update.effective_message.reply_text(text, parse_mode="MarkdownV2", reply_markup=markup)
 
 
-async def cmd_opportunity(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """/opportunity <id> — Full scorecard for a candidate."""
-    if not update.effective_message:
-        return
-    _log.info("cmd_opportunity", chat_id=update.effective_chat.id if update.effective_chat else None, candidate_id=ctx.args[0] if ctx.args else None)
+async def _render_opportunity_card(
+    session,
+    candidate_id: int,
+    settings,
+) -> tuple[str, InlineKeyboardMarkup] | None:
+    """Render the full scorecard for a single candidate.
 
-    if not ctx.args:
-        await update.effective_message.reply_text(
-            "Usage: /opportunity \\<id\\>", parse_mode="MarkdownV2"
-        )
-        return
+    Returns (text, markup) or None if the candidate does not exist.
+    Shared by /opportunity command and the 'view:' inline-button callback.
+    """
+    c_result = await session.execute(
+        select(OpportunityCandidate).where(OpportunityCandidate.id == candidate_id)
+    )
+    c = c_result.scalars().first()
+    if c is None:
+        return None
 
-    try:
-        candidate_id = int(ctx.args[0])
-    except ValueError:
-        await update.effective_message.reply_text("Please provide a numeric candidate id\\.", parse_mode="MarkdownV2")
-        return
+    score = await _fetch_latest_score(session, c.id)
+    brief = await _fetch_latest_brief(session, c.id)
 
-    settings = get_settings()
+    pp_result = await session.execute(
+        select(PainPoint, SourceItem)
+        .join(SourceItem, PainPoint.source_item_id == SourceItem.id)
+        .where(PainPoint.candidate_id == c.id)
+        .order_by(PainPoint.extracted_at.desc())
+        .limit(5)
+    )
+    evidence_rows = pp_result.all()
 
-    async with get_session() as session:
-        c_result = await session.execute(
-            select(OpportunityCandidate).where(OpportunityCandidate.id == candidate_id)
-        )
-        c = c_result.scalars().first()
-
-        if c is None:
-            await update.effective_message.reply_text("Candidate not found\\.", parse_mode="MarkdownV2")
-            return
-
-        score = await _fetch_latest_score(session, c.id)
-        brief = await _fetch_latest_brief(session, c.id)
-
-        # Top 5 evidence excerpts
-        pp_result = await session.execute(
-            select(PainPoint, SourceItem)
-            .join(SourceItem, PainPoint.source_item_id == SourceItem.id)
-            .where(PainPoint.candidate_id == c.id)
-            .order_by(PainPoint.extracted_at.desc())
-            .limit(5)
-        )
-        evidence_rows = pp_result.all()
-
-        # Latest validation
-        val_result = await session.execute(
-            select(CandidateValidation)
-            .where(CandidateValidation.candidate_id == c.id)
-            .where(CandidateValidation.signal_type == "composite")
-            .order_by(CandidateValidation.validated_at.desc())
-            .limit(1)
-        )
-        validation = val_result.scalars().first()
+    val_result = await session.execute(
+        select(CandidateValidation)
+        .where(CandidateValidation.candidate_id == c.id)
+        .where(CandidateValidation.signal_type == "composite")
+        .order_by(CandidateValidation.validated_at.desc())
+        .limit(1)
+    )
+    validation = val_result.scalars().first()
 
     lines: list[str] = []
 
-    # Archived banner
     if c.is_archived:
         lines.append("⚠️ This opportunity has been archived\\.")
         lines.append("")
 
-    # Below gate warning
     if c.specificity <= settings.specificity_gate:
         lines.append(
             "⚠️ This opportunity is below the specificity threshold and may not be actionable yet\\."
@@ -243,7 +226,48 @@ async def cmd_opportunity(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     markup = InlineKeyboardMarkup(
         _candidate_inline_buttons(c.id, brief.id if brief else None)
     )
-    await update.effective_message.reply_text(text, parse_mode="MarkdownV2", reply_markup=markup)
+    return text, markup
+
+
+async def cmd_opportunity(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """/opportunity <id> — Full scorecard for a candidate."""
+    if not update.effective_message:
+        return
+    _log.info(
+        "cmd_opportunity",
+        chat_id=update.effective_chat.id if update.effective_chat else None,
+        candidate_id=ctx.args[0] if ctx.args else None,
+    )
+
+    if not ctx.args:
+        await update.effective_message.reply_text(
+            "Usage: /opportunity \\<id\\>", parse_mode="MarkdownV2"
+        )
+        return
+
+    try:
+        candidate_id = int(ctx.args[0])
+    except ValueError:
+        await update.effective_message.reply_text(
+            "Please provide a numeric candidate id\\.", parse_mode="MarkdownV2"
+        )
+        return
+
+    settings = get_settings()
+
+    async with get_session() as session:
+        rendered = await _render_opportunity_card(session, candidate_id, settings)
+
+    if rendered is None:
+        await update.effective_message.reply_text(
+            "Candidate not found\\.", parse_mode="MarkdownV2"
+        )
+        return
+
+    text, markup = rendered
+    await update.effective_message.reply_text(
+        text, parse_mode="MarkdownV2", reply_markup=markup
+    )
 
 
 async def cmd_categories(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
