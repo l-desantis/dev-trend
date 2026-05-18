@@ -12,9 +12,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ingestion.http_utils import request_with_retry
+from app.llm.rate_limiter import AsyncRateLimiter
 from app.models import CandidateValidation, OpportunityCandidate, SourceItem
 
 log = structlog.get_logger(__name__)
+
+# GitHub authenticated search: 30 req/min; leave headroom for other callers.
+_github_search_limiter = AsyncRateLimiter(max_requests=25, window_seconds=60.0)
 
 _STOPWORDS = frozenset(
     "a an the and or but in on at to for of with is are was were be been being "
@@ -100,6 +104,7 @@ async def search_github_repos(
     repos_by_name: dict[str, dict[str, Any]] = {}
 
     for q in queries:
+        await _github_search_limiter.acquire()
         full_q = f"{q}+in:name,description,readme"
         try:
             resp = await request_with_retry(
