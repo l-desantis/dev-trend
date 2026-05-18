@@ -167,3 +167,101 @@ async def test_count_show_hn_matches(session: AsyncSession) -> None:
 
     result = await count_show_hn_matches(session, candidate)
     assert result["show_hn_count"] >= 3
+
+
+def test_extract_keywords_prefers_audience_cohort_nouns() -> None:
+    from app.pipeline.validation import extract_keywords
+    problem = ("Current task management and habit tracking apps fail to "
+               "engage and motivate individuals with diverse needs.")
+    audience = "Individuals with ADHD and social media addiction"
+    kws = extract_keywords(problem, audience)
+    # ADHD must survive the 5-token cap
+    assert "adhd" in kws
+
+
+def test_extract_keywords_drops_weak_filler_words() -> None:
+    from app.pipeline.validation import extract_keywords
+    problem = ("Current existing apps and solutions for users are not "
+               "engaging enough.")
+    kws = extract_keywords(problem, None)
+    for filler in ("current", "existing", "apps", "solutions", "users"):
+        assert filler not in kws, f"filler word {filler!r} leaked into keywords"
+
+
+def test_extract_keywords_returns_at_most_five() -> None:
+    from app.pipeline.validation import extract_keywords
+    problem = " ".join(f"meaningfulword{i}" for i in range(20))
+    kws = extract_keywords(problem, None)
+    assert len(kws) <= 5
+
+
+async def test_search_github_repos_unions_multiple_pair_queries() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+    import httpx
+    from app.pipeline.validation import search_github_repos
+
+    def resp(items):
+        m = MagicMock()
+        m.status_code = 200
+        m.json.return_value = {"total_count": len(items), "items": items}
+        return m
+
+    # Each pair query returns different repos; one repo appears in two
+    # queries and must be deduped.
+    responses = [
+        resp([
+            {"full_name": "alice/adhd-tasks", "stargazers_count": 800,
+             "html_url": "https://github.com/alice/adhd-tasks", "language": "Python"},
+            {"full_name": "bob/shared-repo", "stargazers_count": 1200,
+             "html_url": "https://github.com/bob/shared-repo", "language": "Go"},
+        ]),
+        resp([
+            {"full_name": "bob/shared-repo", "stargazers_count": 1200,
+             "html_url": "https://github.com/bob/shared-repo", "language": "Go"},
+            {"full_name": "carol/habit-tracker", "stargazers_count": 500,
+             "html_url": "https://github.com/carol/habit-tracker", "language": "Rust"},
+        ]),
+        resp([
+            {"full_name": "dave/focus-app", "stargazers_count": 50,
+             "html_url": "https://github.com/dave/focus-app", "language": "Swift"},
+        ]),
+    ]
+
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.request = AsyncMock(side_effect=responses)
+
+    result = await search_github_repos(
+        client, ["adhd", "habit", "tracker", "focus"]
+    )
+
+    # Three pair queries issued
+    assert client.request.await_count == 3
+    # 4 unique repos after dedupe
+    assert result["repo_count"] == 4
+    # Top repos sorted by stars desc
+    names = [r["name"] for r in result["top_repos_json"]]
+    assert names[0] == "bob/shared-repo"
+    assert result["max_stars"] == 1200
+
+
+async def test_search_github_repos_handles_single_keyword() -> None:
+    # With only one keyword, no pairs can be formed — should still issue
+    # one fallback query and return its results.
+    from unittest.mock import AsyncMock, MagicMock
+    import httpx
+    from app.pipeline.validation import search_github_repos
+
+    m = MagicMock()
+    m.status_code = 200
+    m.json.return_value = {
+        "total_count": 1,
+        "items": [{"full_name": "x/y", "stargazers_count": 10,
+                   "html_url": "https://github.com/x/y", "language": "Python"}],
+    }
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.request = AsyncMock(return_value=m)
+
+    result = await search_github_repos(client, ["adhd"])
+
+    assert client.request.await_count == 1
+    assert result["repo_count"] == 1

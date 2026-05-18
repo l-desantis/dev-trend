@@ -20,7 +20,17 @@ _STOPWORDS = frozenset(
     "a an the and or but in on at to for of with is are was were be been being "
     "have has had do does did will would could should may might shall can i we "
     "you he she it they them their its my our your his her from by about into "
-    "through during before after above below between among while".split()
+    "through during before after above below between among while "
+    # Weak filler / overly generic tokens that pollute GitHub queries:
+    "current currently existing existed new old "
+    "app apps application applications solution solutions tool tools "
+    "user users people person individual individuals customer customers "
+    "thing things stuff way ways "
+    "need needs needed lack lacking missing "
+    "feature features functionality "
+    "good bad great poor better best worse worst "
+    "make made making get got getting use used using "
+    "really very quite rather just only also still even".split()
 )
 
 
@@ -33,56 +43,93 @@ class ValidationReport:
     details: list[dict[str, Any]] = field(default_factory=list)
 
 
+def _tokens(text: str) -> list[str]:
+    return [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", text)
+            if w.lower() not in _STOPWORDS]
+
+
 def extract_keywords(problem_statement: str, audience: str | None) -> list[str]:
-    combined = f"{problem_statement} {audience or ''}"
-    words = re.findall(r"[a-zA-Z]{3,}", combined)
-    candidates = [w.lower() for w in words if w.lower() not in _STOPWORDS]
-    # deduplicate preserving order, prefer longer words
+    """Return up to 5 search keywords, preferring audience cohort nouns.
+
+    Audience tokens are emitted first so cohort identifiers (e.g. "adhd")
+    survive the 5-token cap even when the problem statement is verbose.
+    """
+    ordered: list[str] = []
+    if audience:
+        ordered.extend(_tokens(audience))
+    ordered.extend(_tokens(problem_statement))
+
     seen: set[str] = set()
-    unique = []
-    for w in candidates:
+    unique: list[str] = []
+    for w in ordered:
         if w not in seen:
             seen.add(w)
             unique.append(w)
     return unique[:5]
 
 
+def _pair_queries(keywords: list[str], max_pairs: int = 3) -> list[str]:
+    """Build short keyword-pair queries from the top keywords.
+
+    Picks up to ``max_pairs`` 2-token combinations from the first 4 keywords.
+    Falls back to a single-keyword query if only one keyword is available.
+    """
+    head = keywords[:4]
+    if len(head) == 0:
+        return []
+    if len(head) == 1:
+        return [head[0]]
+    pairs: list[str] = []
+    for i in range(len(head)):
+        for j in range(i + 1, len(head)):
+            pairs.append(f"{head[i]}+{head[j]}")
+            if len(pairs) >= max_pairs:
+                return pairs
+    return pairs
+
+
 async def search_github_repos(
     client: httpx.AsyncClient,
     keywords: list[str],
 ) -> dict[str, Any]:
-    if not keywords:
+    queries = _pair_queries(keywords)
+    if not queries:
         return {"repo_count": 0, "top_repos_json": [], "star_delta_30d": 0, "max_stars": 0}
 
-    q = "+".join(keywords) + "+in:name,description,readme"
     url = "https://api.github.com/search/repositories"
-    try:
-        resp = await request_with_retry(
-            client, "GET", url,
-            params={"q": q, "sort": "stars", "per_page": 30},
-            headers={"Accept": "application/vnd.github+json"},
-        )
-        data = resp.json()
-    except Exception as exc:
-        log.warning("github_search_failed", error=str(exc))
-        return {"repo_count": 0, "top_repos_json": [], "star_delta_30d": 0, "max_stars": 0}
+    repos_by_name: dict[str, dict[str, Any]] = {}
 
-    total = data.get("total_count", 0)
-    items = data.get("items", [])[:5]
-    top_repos = [
-        {
-            "name": r.get("full_name", ""),
-            "stars": r.get("stargazers_count", 0),
-            "url": r.get("html_url", ""),
-            "language": r.get("language"),
-        }
-        for r in items
-    ]
-    max_stars = max((r["stars"] for r in top_repos), default=0)
+    for q in queries:
+        full_q = f"{q}+in:name,description,readme"
+        try:
+            resp = await request_with_retry(
+                client, "GET", url,
+                params={"q": full_q, "sort": "stars", "per_page": 10},
+                headers={"Accept": "application/vnd.github+json"},
+            )
+            data = resp.json()
+        except Exception as exc:
+            log.warning("github_search_failed", q=q, error=str(exc))
+            continue
+
+        for r in data.get("items", []):
+            name = r.get("full_name", "")
+            if not name or name in repos_by_name:
+                continue
+            repos_by_name[name] = {
+                "name": name,
+                "stars": r.get("stargazers_count", 0),
+                "url": r.get("html_url", ""),
+                "language": r.get("language"),
+            }
+
+    deduped = sorted(repos_by_name.values(), key=lambda r: r["stars"], reverse=True)
+    top_repos = deduped[:5]
+    max_stars = max((r["stars"] for r in deduped), default=0)
     return {
-        "repo_count": min(total, 30),
+        "repo_count": len(deduped),
         "top_repos_json": top_repos,
-        "star_delta_30d": 0,  # Phase 1: approximated via prev snapshot in caller
+        "star_delta_30d": 0,
         "max_stars": max_stars,
     }
 
