@@ -96,7 +96,8 @@ def build_scheduler(
         from app.bot.v4_notifications import emit_lifecycle_alerts
 
         session_factory = _get_session_factory()
-        github_client = httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s)
+        _gh_headers = {"Authorization": f"Bearer {settings.github_token}"} if settings.github_token else {}
+        github_client = httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s, headers=_gh_headers)
         try:
             async with session_factory() as session:
                 await run_validation(session, github_client)
