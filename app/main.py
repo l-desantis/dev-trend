@@ -16,23 +16,57 @@ from app.db import check_db_reachable, get_session
 def _configure_logging() -> None:
     settings = get_settings()
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
-    logging.basicConfig(format="%(message)s", level=log_level)
+
+    timestamper = structlog.processors.TimeStamper(fmt="iso")
+
+    # Processors applied to records that did NOT originate from structlog
+    # (uvicorn, apscheduler, telegram, etc.). They turn a stdlib LogRecord
+    # into the same event_dict shape structlog produces, so the final
+    # JSONRenderer can format both kinds identically.
+    foreign_pre_chain = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        timestamper,
+    ]
+
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.processors.JSONRenderer(),
+        foreign_pre_chain=foreign_pre_chain,
+    )
+
+    handler = logging.StreamHandler()  # stderr by default — Docker captures it.
+    handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    # Idempotent: wipe any prior handlers (basicConfig, pytest, prior call)
+    # so we never double-log.
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+    root.addHandler(handler)
+    root.setLevel(log_level)
 
     # Silence noisy third-party loggers so app.* events stay readable.
     # httpx also logs outbound URLs which include the Telegram bot token.
-    for name in ("uvicorn.access", "httpx", "httpcore"):
+    for name in ("uvicorn.access", "httpx", "httpcore", "telegram", "telegram.ext"):
         logging.getLogger(name).setLevel(logging.WARNING)
 
     structlog.configure(
         processors=[
+            structlog.contextvars.merge_contextvars,
             structlog.stdlib.filter_by_level,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.JSONRenderer(),
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            timestamper,
+            # Hand the event_dict to ProcessorFormatter, which finishes the
+            # rendering via the JSONRenderer above. Single render path for
+            # both stdlib- and structlog-originated records.
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
     )
 
 
@@ -136,4 +170,20 @@ app.include_router(health_router)
 def main() -> None:
     import uvicorn
 
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
+    # Configure logging BEFORE uvicorn boots so our root handler is in place
+    # when uvicorn imports the app (and so `log_config=None` below doesn't
+    # leave us briefly with no handlers at all).
+    _configure_logging()
+
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=False,
+        # Don't let uvicorn install its own dictConfig — it would clobber
+        # the ProcessorFormatter handler we just set up on the root logger.
+        log_config=None,
+        # Access logs are noisy and we already pin uvicorn.access to WARNING;
+        # turning the access logger off entirely is the cleanest signal.
+        access_log=False,
+    )
