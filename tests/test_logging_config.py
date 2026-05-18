@@ -1,4 +1,3 @@
-import json
 import logging
 from contextlib import contextmanager
 
@@ -62,7 +61,7 @@ def test_configure_logging_is_idempotent():
         )
 
 
-def test_foreign_stdlib_log_renders_as_json(capfd: pytest.CaptureFixture[str]):
+def test_foreign_stdlib_log_renders_as_console_text(capfd: pytest.CaptureFixture[str]):
     with _isolated_root_logger():
         _configure_logging()
         # apscheduler.scheduler is a stdlib logger that propagates to root.
@@ -71,6 +70,6 @@ def test_foreign_stdlib_log_renders_as_json(capfd: pytest.CaptureFixture[str]):
     captured = capfd.readouterr()
     # The formatted record goes to stderr by default (StreamHandler() default stream).
     line = (captured.err or captured.out).strip().splitlines()[-1]
-    payload = json.loads(line)
-    assert payload["event"] == "Scheduler started"
-    assert payload["logger"] == "apscheduler.scheduler"
+    assert "[info     ]" in line
+    assert "Scheduler started" in line
+    assert "[apscheduler.scheduler]" in line

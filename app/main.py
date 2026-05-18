@@ -31,7 +31,7 @@ def _configure_logging() -> None:
     ]
 
     formatter = structlog.stdlib.ProcessorFormatter(
-        processor=structlog.processors.JSONRenderer(),
+        processor=structlog.dev.ConsoleRenderer(colors=False),
         foreign_pre_chain=foreign_pre_chain,
     )
 
