@@ -266,3 +266,32 @@ async def test_emit_lifecycle_alerts_skips_dormant(session: AsyncSession) -> Non
     sends = await emit_lifecycle_alerts(transitions, bot, session, [111], settings)
     assert sends == 0
     bot.send_message.assert_not_called()
+
+
+def test_digest_renders_full_problem_statement_without_mid_word_cut() -> None:
+    long_statement = (
+        "Developers struggle with tedious and manual tasks, such as organizing "
+        "decks, discussions, and presentations during meetings."
+    )
+    c = OpportunityCandidate(id=1, problem_statement=long_statement, specificity=3)
+    message = build_digest_message([c], [])
+
+    # Last meaningful word of the original statement must survive (escaped period).
+    assert "presentations during meetings" in message
+    # Old 80-char hard cut would have ended with ", dis" — make sure it's gone.
+    assert "dis —" not in message
+    assert "dis " + "—" not in message  # em dash variant
+
+
+def test_digest_omits_brief_excerpt() -> None:
+    c = OpportunityCandidate(id=2, problem_statement="short title", specificity=3)
+    brief = CandidateBrief(
+        id=10,
+        candidate_id=2,
+        summary="A LONG SUMMARY THAT SHOULD NOT APPEAR IN THE DIGEST AT ALL",
+    )
+    message = build_digest_message([c], [brief])
+
+    assert "LONG SUMMARY" not in message
+    # No stray opening quote left behind from the deleted excerpt block.
+    assert '"' not in message

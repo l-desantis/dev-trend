@@ -63,7 +63,7 @@ def _candidate_card(
     brief: CandidateBrief | None,
     score: float | None,
 ) -> str:
-    title = md_escape((candidate.problem_statement or "")[:80])
+    title = md_escape(candidate.problem_statement or "")
     score_str = md_escape(str(int(score + 0.5)) if score is not None else "—")
     lc = lifecycle_arrow(candidate.lifecycle_state)
     lc_str = md_escape(lc) if lc else ""
@@ -71,10 +71,6 @@ def _candidate_card(
     parts = [f"\\#{rank} — *{title}* — Score: *{score_str}*"]
     if lc_str:
         parts[0] += f"  {lc_str}"
-
-    if brief and brief.summary:
-        excerpt = md_escape(truncate(brief.summary, 120))
-        parts.append(f'"{excerpt}"')
 
     if candidate.audience:
         parts.append(f"Audience: {md_escape(candidate.audience)}")
