@@ -131,3 +131,26 @@ def render_brief_prompt(context: dict[str, Any]) -> str:
         evidence_count=len(evidence),
         evidence_block=_format_evidence(evidence),
     )
+
+
+# ---------------------------------------------------------------------------
+# Validation keyword extraction prompt
+# ---------------------------------------------------------------------------
+
+KEYWORD_EXTRACT_SYSTEM_PROMPT = (
+    "You extract specific GitHub search keywords from product opportunity descriptions. "
+    "Return only domain-specific nouns: product categories, technologies, problem domains. "
+    "Never return verbs, adjectives, or generic terms like 'app', 'tool', 'users', 'developers'."
+)
+
+KEYWORD_EXTRACT_USER_PROMPT = """\
+Problem: {problem}
+Audience: {audience}
+
+Return 3-5 specific keywords suitable for GitHub repository search.
+Good examples: adhd, fintech, leetcode, react-native, ecommerce, multilingual, procurement, wearable
+Bad examples: struggle, create, accessible, multiple, users, developers, platform, manage
+
+Return STRICT JSON: {{"keywords": ["word1", "word2", "word3"]}}
+Reply with ONLY the JSON object, no prose.\
+"""
