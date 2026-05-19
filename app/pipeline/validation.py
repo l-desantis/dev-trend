@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ingestion.http_utils import request_with_retry
+from app.llm.base import LLMAdapter
 from app.llm.rate_limiter import AsyncRateLimiter
 from app.models import CandidateValidation, OpportunityCandidate, SourceItem
 
@@ -247,10 +248,32 @@ async def count_show_hn_matches(
     return {"show_hn_count": count, "top_show_hn_json": top_show_hn}
 
 
+async def select_keywords(
+    problem: str,
+    audience: str | None,
+    llm: LLMAdapter | None,
+) -> list[str]:
+    """Return keywords from the LLM when available, else fall back to stopword extraction.
+
+    Defense-in-depth: each adapter already swallows errors and returns [], but we
+    catch here too in case a future adapter raises.
+    """
+    if llm is not None:
+        try:
+            kws = await llm.extract_search_keywords(problem, audience)
+            if kws:
+                log.debug("llm_keywords_used", keywords=kws)
+                return kws
+        except Exception as exc:
+            log.warning("llm_keyword_extract_failed", error=str(exc))
+    return extract_keywords(problem, audience)
+
+
 async def run_validation(
     session: AsyncSession,
     github_client: httpx.AsyncClient,
     *,
+    llm: LLMAdapter | None = None,
     only_active: bool = True,
     refresh_age_days: int = 7,
 ) -> ValidationReport:
@@ -285,7 +308,7 @@ async def run_validation(
             continue
 
         try:
-            keywords = extract_keywords(candidate.problem_statement, candidate.audience)
+            keywords = await select_keywords(candidate.problem_statement, candidate.audience, llm)
             github_data = await search_github_repos(github_client, keywords)
 
             # Phase 1 star_delta_30d: compare to previous snapshot
