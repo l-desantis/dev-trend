@@ -17,8 +17,10 @@ from app.models import CandidateValidation, OpportunityCandidate, SourceItem
 
 log = structlog.get_logger(__name__)
 
-# GitHub authenticated search: 30 req/min; leave headroom for other callers.
-_github_search_limiter = AsyncRateLimiter(max_requests=25, window_seconds=60.0)
+# GitHub search rate limits: 30 req/min authenticated, 10 req/min unauthenticated.
+# Stay a few slots under each to leave headroom.
+_github_limiter_auth = AsyncRateLimiter(max_requests=25, window_seconds=60.0)
+_github_limiter_unauth = AsyncRateLimiter(max_requests=8, window_seconds=60.0)
 
 _STOPWORDS = frozenset(
     "a an the and or but in on at to for of with is are was were be been being "
@@ -103,8 +105,9 @@ async def search_github_repos(
     url = "https://api.github.com/search/repositories"
     repos_by_name: dict[str, dict[str, Any]] = {}
 
+    limiter = _github_limiter_auth if "Authorization" in client.headers else _github_limiter_unauth
     for q in queries:
-        await _github_search_limiter.acquire()
+        await limiter.acquire()
         full_q = f"{q}+in:name,description,readme"
         try:
             resp = await request_with_retry(
