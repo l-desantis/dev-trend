@@ -36,7 +36,22 @@ _STOPWORDS = frozenset(
     "feature features functionality "
     "good bad great poor better best worse worst "
     "make made making get got getting use used using "
-    "really very quite rather just only also still even".split()
+    "really very quite rather just only also still even "
+    # Audience / role descriptors (too generic for GitHub repo search):
+    "developer developers designer designers founder founders "
+    "entrepreneur entrepreneurs professional professionals "
+    "beginner beginners expert experts enthusiast enthusiasts "
+    "hobbyist hobbyists creator creators maker makers builder builders "
+    "indie technical non "
+    # Business / org terms:
+    "team teams company companies business businesses enterprise enterprises "
+    "startup startups brand brands market markets industry industries "
+    "owner owners manager managers operator operators client clients "
+    "vendor vendors consumer consumers buyer buyers seller sellers "
+    # Generic product / system terms:
+    "project projects platform platforms service services product products "
+    "system systems device devices software hardware infrastructure "
+    "workflow process processes ".split()
 )
 
 
