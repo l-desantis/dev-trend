@@ -106,6 +106,9 @@ class _PromptRenderingAdapter(LLMAdapter):
     async def review_brief(self, brief: str) -> dict[str, object]:
         return {}
 
+    async def extract_search_keywords(self, problem: str, audience: str | None) -> list[str]:
+        return []
+
 
 async def test_render_brief_prompt_no_key_error(session: AsyncSession) -> None:
     c = await _seed(session)
