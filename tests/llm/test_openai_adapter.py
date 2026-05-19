@@ -111,3 +111,41 @@ async def test_generate_brief_returns_string(adapter: OpenAIAdapter) -> None:
 
 def test_model_name_uses_openai_prefix(adapter: OpenAIAdapter) -> None:
     assert adapter.model_name == "openai:gpt-4.1-nano"
+
+
+@pytest.mark.asyncio
+async def test_openai_extract_search_keywords_happy_path(adapter: OpenAIAdapter) -> None:
+    from app.llm.schemas import SearchKeywords
+    parsed = SearchKeywords(keywords=["adhd", "habit", "tracker"])
+    with patch.object(
+        adapter._client.beta.chat.completions,
+        "parse",
+        new=AsyncMock(return_value=_parse_completion(parsed)),
+    ):
+        result = await adapter.extract_search_keywords(
+            "habit tracking apps fail to engage ADHD adults",
+            "ADHD adults",
+        )
+    assert result == ["adhd", "habit", "tracker"]
+
+
+@pytest.mark.asyncio
+async def test_openai_extract_search_keywords_exception_returns_empty(adapter: OpenAIAdapter) -> None:
+    with patch.object(
+        adapter._client.beta.chat.completions,
+        "parse",
+        new=AsyncMock(side_effect=Exception("API error")),
+    ):
+        result = await adapter.extract_search_keywords("some problem", None)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_openai_extract_search_keywords_none_response_returns_empty(adapter: OpenAIAdapter) -> None:
+    with patch.object(
+        adapter._client.beta.chat.completions,
+        "parse",
+        new=AsyncMock(return_value=_parse_completion(None)),
+    ):
+        result = await adapter.extract_search_keywords("some problem", None)
+    assert result == []

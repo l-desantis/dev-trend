@@ -9,10 +9,12 @@ from app.llm.prompts import (
     BRIEF_SYSTEM_PROMPT,
     EXTRACT_SYSTEM_PROMPT,
     EXTRACT_USER_PROMPT,
+    KEYWORD_EXTRACT_SYSTEM_PROMPT,
+    KEYWORD_EXTRACT_USER_PROMPT,
     LABEL_CLUSTER_PROMPT,
     render_brief_prompt,
 )
-from app.llm.schemas import ClusterLabel, PainPointDraft
+from app.llm.schemas import ClusterLabel, PainPointDraft, SearchKeywords
 
 log = structlog.get_logger(__name__)
 
@@ -83,6 +85,31 @@ class OpenAIAdapter(LLMAdapter):
         if result is None:
             raise ValueError("OpenAI refused to parse ClusterLabel response")
         return result
+
+    async def extract_search_keywords(
+        self,
+        problem: str,
+        audience: str | None,
+    ) -> list[str]:
+        try:
+            completion = await self._client.beta.chat.completions.parse(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": KEYWORD_EXTRACT_SYSTEM_PROMPT},
+                    {"role": "user", "content": KEYWORD_EXTRACT_USER_PROMPT.format(
+                        problem=problem,
+                        audience=audience or "(not specified)",
+                    )},
+                ],
+                response_format=SearchKeywords,
+            )
+            result = completion.choices[0].message.parsed
+            if result is None:
+                return []
+            return [k.lower().strip() for k in result.keywords if k.strip()][:5]
+        except Exception as exc:
+            log.warning("openai_keyword_extract_failed", error=str(exc))
+            return []
 
     async def generate_brief(self, context: dict[str, Any]) -> str:
         prompt = render_brief_prompt(context)
