@@ -51,7 +51,26 @@ _STOPWORDS = frozenset(
     # Generic product / system terms:
     "project projects platform platforms service services product products "
     "system systems device devices software hardware infrastructure "
-    "workflow process processes ".split()
+    "workflow process processes "
+    # Narrative verbs and abstract nouns common in problem statements:
+    "struggle struggles struggling "
+    "create creates creating "
+    "provide provides providing "
+    "enable enables enabling "
+    "improve improves improving "
+    "offer offers offering "
+    "connect connects connecting "
+    "manage manages managing "
+    "success successes failure failures "
+    "challenge challenges difficulty difficulties "
+    "barrier barriers friction opportunity opportunities "
+    "dedicated designed tailored driven focused ".split()
+)
+
+# 3-letter tokens are almost always noise (acronyms like 'dtc', prefixes like 'non').
+# Only allow known technical abbreviations.
+_SHORT_TECH_ALLOWLIST = frozenset(
+    "api ios sdk web git sql css rss xml cli gui iot llm nlp ocr vpn cdn".split()
 )
 
 
