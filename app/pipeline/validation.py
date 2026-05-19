@@ -49,6 +49,7 @@ def _load_stopwords() -> frozenset[str]:
         "beginner beginners expert experts enthusiast enthusiasts "
         "hobbyist hobbyists creator creators maker makers builder builders "
         "indie technical non "
+        "social media "
         # Business / org terms:
         "team teams company companies business businesses enterprise enterprises "
         "startup startups brand brands market markets industry industries "
@@ -110,7 +111,7 @@ def extract_keywords(problem_statement: str, audience: str | None) -> list[str]:
     """
     ordered: list[str] = []
     if audience:
-        ordered.extend(_tokens(audience))
+        ordered.extend(_tokens(audience)[:1])  # one cohort noun max; problem tokens fill the rest
     ordered.extend(_tokens(problem_statement))
 
     seen: set[str] = set()
