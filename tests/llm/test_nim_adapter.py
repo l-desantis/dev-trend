@@ -161,3 +161,47 @@ async def test_chat_acquires_on_each_retry():
         await adapter.extract_pain_point("some text")
 
     assert limiter.acquire.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_nim_extract_search_keywords_happy_path(adapter) -> None:
+    payload = '{"keywords": ["adhd", "habit", "tracker"]}'
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = _chat_response(payload)
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(adapter._client, "post", new=AsyncMock(return_value=mock_response)):
+        result = await adapter.extract_search_keywords(
+            "habit tracking apps fail to engage ADHD adults",
+            "ADHD adults",
+        )
+
+    assert result == ["adhd", "habit", "tracker"]
+
+
+@pytest.mark.asyncio
+async def test_nim_extract_search_keywords_bad_json_returns_empty(adapter) -> None:
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = _chat_response("not valid json")
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(adapter._client, "post", new=AsyncMock(return_value=mock_response)):
+        result = await adapter.extract_search_keywords("some problem", None)
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_nim_extract_search_keywords_strips_and_lowercases(adapter) -> None:
+    payload = '{"keywords": ["  ADHD  ", "Habit", "Tracker"]}'
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = _chat_response(payload)
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(adapter._client, "post", new=AsyncMock(return_value=mock_response)):
+        result = await adapter.extract_search_keywords("some problem", None)
+
+    assert result == ["adhd", "habit", "tracker"]

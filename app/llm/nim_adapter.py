@@ -12,6 +12,8 @@ from app.llm.prompts import (
     BRIEF_SYSTEM_PROMPT,
     EXTRACT_SYSTEM_PROMPT,
     EXTRACT_USER_PROMPT,
+    KEYWORD_EXTRACT_SYSTEM_PROMPT,
+    KEYWORD_EXTRACT_USER_PROMPT,
     LABEL_CLUSTER_PROMPT,
     render_brief_prompt,
 )
@@ -118,6 +120,26 @@ class NvidiaNimAdapter(LLMAdapter):
         messages = [{"role": "user", "content": prompt}]
         raw = await self._chat(messages, json_mode=True)
         return ClusterLabel.model_validate_json(raw)
+
+    async def extract_search_keywords(
+        self,
+        problem: str,
+        audience: str | None,
+    ) -> list[str]:
+        messages = [
+            {"role": "system", "content": KEYWORD_EXTRACT_SYSTEM_PROMPT},
+            {"role": "user", "content": KEYWORD_EXTRACT_USER_PROMPT.format(
+                problem=problem,
+                audience=audience or "(not specified)",
+            )},
+        ]
+        try:
+            raw = await self._chat(messages, json_mode=True)
+            data = json.loads(raw)
+            return [k.lower().strip() for k in data.get("keywords", []) if k.strip()][:5]
+        except Exception as exc:
+            log.warning("nim_keyword_extract_failed", error=str(exc))
+            return []
 
     async def generate_brief(self, context: dict[str, Any]) -> str:
         prompt = render_brief_prompt(context)
