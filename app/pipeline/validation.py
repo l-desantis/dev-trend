@@ -105,7 +105,9 @@ async def search_github_repos(
     url = "https://api.github.com/search/repositories"
     repos_by_name: dict[str, dict[str, Any]] = {}
 
-    limiter = _github_limiter_auth if "Authorization" in client.headers else _github_limiter_unauth
+    authenticated = "Authorization" in client.headers
+    limiter = _github_limiter_auth if authenticated else _github_limiter_unauth
+    log.debug("github_search_start", queries=queries, authenticated=authenticated)
     for q in queries:
         await limiter.acquire()
         full_q = f"{q}+in:name,description,readme"
@@ -120,6 +122,8 @@ async def search_github_repos(
             log.warning("github_search_failed", q=q, error=str(exc))
             continue
 
+        hits = data.get("total_count", 0)
+        log.debug("github_search_result", q=q, total_count=hits, items=len(data.get("items", [])))
         for r in data.get("items", []):
             name = r.get("full_name", "")
             if not name or name in repos_by_name:
