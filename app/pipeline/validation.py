@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -22,50 +23,56 @@ log = structlog.get_logger(__name__)
 _github_limiter_auth = AsyncRateLimiter(max_requests=25, window_seconds=60.0)
 _github_limiter_unauth = AsyncRateLimiter(max_requests=8, window_seconds=60.0)
 
-_STOPWORDS = frozenset(
-    "a an the and or but in on at to for of with is are was were be been being "
-    "have has had do does did will would could should may might shall can i we "
-    "you he she it they them their its my our your his her from by about into "
-    "through during before after above below between among while "
-    # Weak filler / overly generic tokens that pollute GitHub queries:
-    "current currently existing existed new old "
-    "app apps application applications solution solutions tool tools "
-    "user users people person individual individuals customer customers "
-    "thing things stuff way ways "
-    "need needs needed lack lacking missing "
-    "feature features functionality "
-    "good bad great poor better best worse worst "
-    "make made making get got getting use used using "
-    "really very quite rather just only also still even "
-    # Audience / role descriptors (too generic for GitHub repo search):
-    "developer developers designer designers founder founders "
-    "entrepreneur entrepreneurs professional professionals "
-    "beginner beginners expert experts enthusiast enthusiasts "
-    "hobbyist hobbyists creator creators maker makers builder builders "
-    "indie technical non "
-    # Business / org terms:
-    "team teams company companies business businesses enterprise enterprises "
-    "startup startups brand brands market markets industry industries "
-    "owner owners manager managers operator operators client clients "
-    "vendor vendors consumer consumers buyer buyers seller sellers "
-    # Generic product / system terms:
-    "project projects platform platforms service services product products "
-    "system systems device devices software hardware infrastructure "
-    "workflow process processes "
-    # Narrative verbs and abstract nouns common in problem statements:
-    "struggle struggles struggling "
-    "create creates creating "
-    "provide provides providing "
-    "enable enables enabling "
-    "improve improves improving "
-    "offer offers offering "
-    "connect connects connecting "
-    "manage manages managing "
-    "success successes failure failures "
-    "challenge challenges difficulty difficulties "
-    "barrier barriers friction opportunity opportunities "
-    "dedicated designed tailored driven focused ".split()
-)
+def _load_stopwords() -> frozenset[str]:
+    # SMART IR list (~571 words): verbs, adverbs, abstract nouns, function words.
+    # Only keep purely alphabetic entries — the file contains contractions like "a's".
+    _smart_file = Path(__file__).parent.parent.parent / "data" / "smart_stopwords.txt"
+    smart: set[str] = set()
+    if _smart_file.exists():
+        for line in _smart_file.read_text().splitlines():
+            w = line.strip().lower()
+            if w.isalpha():
+                smart.add(w)
+
+    # Domain-specific additions: words the SMART list doesn't cover but that
+    # pollute GitHub search queries for software/product candidates.
+    domain: set[str] = set(
+        "app apps application applications solution solutions tool tools "
+        "current currently existing existed "
+        "user users people person individual individuals customer customers "
+        "thing things stuff way ways "
+        "need needs needed lack lacking missing "
+        "feature features functionality "
+        # Audience / role descriptors:
+        "developer developers designer designers founder founders "
+        "entrepreneur entrepreneurs professional professionals "
+        "beginner beginners expert experts enthusiast enthusiasts "
+        "hobbyist hobbyists creator creators maker makers builder builders "
+        "indie technical non "
+        # Business / org terms:
+        "team teams company companies business businesses enterprise enterprises "
+        "startup startups brand brands market markets industry industries "
+        "owner owners manager managers operator operators client clients "
+        "vendor vendors consumer consumers buyer buyers seller sellers "
+        # Generic product / system terms:
+        "project projects platform platforms service services product products "
+        "system systems device devices software hardware infrastructure "
+        "workflow process processes "
+        # Narrative verbs / abstract nouns common in problem statements:
+        "struggle struggles struggling "
+        "provide provides providing "
+        "enable enables enabling "
+        "improve improves improving "
+        "connect connects connecting "
+        "success successes failure failures "
+        "challenge challenges difficulty difficulties "
+        "barrier barriers friction opportunity opportunities "
+        "dedicated designed tailored driven focused".split()
+    )
+    return frozenset(smart | domain)
+
+
+_STOPWORDS = _load_stopwords()
 
 # 3-letter tokens are almost always noise (acronyms like 'dtc', prefixes like 'non').
 # Only allow known technical abbreviations.
@@ -84,8 +91,15 @@ class ValidationReport:
 
 
 def _tokens(text: str) -> list[str]:
-    return [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", text)
-            if w.lower() not in _STOPWORDS]
+    result = []
+    for w in re.findall(r"[a-zA-Z]{3,}", text):
+        lower = w.lower()
+        if lower in _STOPWORDS:
+            continue
+        if len(lower) <= 3 and lower not in _SHORT_TECH_ALLOWLIST:
+            continue
+        result.append(lower)
+    return result
 
 
 def extract_keywords(problem_statement: str, audience: str | None) -> list[str]:
