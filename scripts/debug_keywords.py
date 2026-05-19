@@ -1,13 +1,16 @@
 """Keyword extraction debugger — shows what GitHub pair queries would be issued.
 
-Usage (inline text):
-    uv run python -m scripts.debug_keywords --problem "Current task management apps fail ADHD adults" --audience "Individuals with ADHD"
+Usage (inline text, stopword path):
+    uv run python -m scripts.debug_keywords --problem "Task management apps fail ADHD adults" --audience "ADHD adults"
+
+Usage (inline text, LLM path):
+    uv run python -m scripts.debug_keywords --problem "Task management apps fail ADHD adults" --audience "ADHD adults" --llm
 
 Usage (all active candidates from DB):
-    uv run python -m scripts.debug_keywords --all
+    uv run python -m scripts.debug_keywords --all [--llm]
 
 Usage (single candidate by ID):
-    uv run python -m scripts.debug_keywords --candidate-id 42
+    uv run python -m scripts.debug_keywords --candidate-id 42 [--llm]
 """
 from __future__ import annotations
 
@@ -23,13 +26,13 @@ def _parse_args() -> argparse.Namespace:
     mode.add_argument("--all", dest="all_candidates", action="store_true", help="Process all active candidates from DB")
     mode.add_argument("--candidate-id", type=int, metavar="ID", help="Single candidate by ID")
     parser.add_argument("--audience", default=None, help="Audience text (used with --problem)")
+    parser.add_argument("--llm", action="store_true", help="Use LLM keyword extraction instead of stopwords")
     parser.add_argument("--db-url", default=None, help="Override DATABASE_URL")
     return parser.parse_args()
 
 
-def _print_candidate(label: str, problem: str, audience: str | None) -> None:
-    from app.pipeline.validation import _pair_queries, extract_keywords
-    keywords = extract_keywords(problem, audience)
+def _display(label: str, problem: str, audience: str | None, keywords: list[str]) -> None:
+    from app.pipeline.validation import _pair_queries
     pairs = _pair_queries(keywords)
     print(f"\n{'─'*60}")
     print(f"  {label}")
@@ -45,15 +48,26 @@ def _print_candidate(label: str, problem: str, audience: str | None) -> None:
 
 
 async def _run(args: argparse.Namespace) -> None:
+    from app.pipeline.validation import select_keywords
+
     if args.db_url:
         import os
         os.environ["DATABASE_URL"] = args.db_url
 
+    llm = None
+    if args.llm:
+        from app.config import get_settings
+        from app.llm.factory import make_llm_adapter
+        get_settings.cache_clear()
+        settings = get_settings()
+        llm = make_llm_adapter(settings)
+        print(f"[LLM mode: {llm.model_name}]")
+
     if args.problem:
-        _print_candidate("(inline)", args.problem, args.audience)
+        kws = await select_keywords(args.problem, args.audience, llm)
+        _display("(inline)", args.problem, args.audience, kws)
         return
 
-    from app.config import get_settings
     from app.db import reset_engine, _get_session_factory
     from app.models import OpportunityCandidate
     from sqlalchemy import select
@@ -81,10 +95,12 @@ async def _run(args: argparse.Namespace) -> None:
         return
 
     for c in candidates:
-        _print_candidate(
+        kws = await select_keywords(c.problem_statement, c.audience, llm)
+        _display(
             f"candidate_id={c.id}  [{c.problem_statement[:60]}…]",
             c.problem_statement,
             c.audience,
+            kws,
         )
 
     print(f"\n{'─'*60}")

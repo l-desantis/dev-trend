@@ -90,6 +90,7 @@ def build_scheduler(
         from datetime import UTC, datetime
         import httpx
         from app.db import _get_session_factory
+        from app.llm.factory import make_llm_adapter
         from app.pipeline.validation import run_validation
         from app.scoring.candidate_scorer import score_all_candidates
         from app.pipeline.lifecycle import update_lifecycle_states_and_emit_transitions
@@ -98,9 +99,10 @@ def build_scheduler(
         session_factory = _get_session_factory()
         _gh_headers = {"Authorization": f"Bearer {settings.github_token}"} if settings.github_token else {}
         github_client = httpx.AsyncClient(timeout=settings.ingestion_http_timeout_s, headers=_gh_headers)
+        llm = make_llm_adapter(settings)
         try:
             async with session_factory() as session:
-                await run_validation(session, github_client)
+                await run_validation(session, github_client, llm=llm)
             async with session_factory() as session:
                 as_of = datetime.now(UTC)
                 await score_all_candidates(session, as_of=as_of)
