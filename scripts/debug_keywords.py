@@ -82,7 +82,7 @@ async def _run(args: argparse.Namespace) -> None:
 
     for c in candidates:
         _print_candidate(
-            f"candidate_id={c.id}  label={c.label or '(unlabelled)'}",
+            f"candidate_id={c.id}  [{c.problem_statement[:60]}…]",
             c.problem_statement,
             c.audience,
         )
