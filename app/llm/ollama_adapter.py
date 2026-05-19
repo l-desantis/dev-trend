@@ -11,6 +11,8 @@ from app.llm.base import LLMAdapter
 from app.llm.prompts import (
     BRIEF_SYSTEM_PROMPT,
     EXTRACT_PROMPT,
+    KEYWORD_EXTRACT_SYSTEM_PROMPT,
+    KEYWORD_EXTRACT_USER_PROMPT,
     LABEL_CLUSTER_PROMPT,
     render_brief_prompt,
 )
@@ -98,3 +100,27 @@ class OllamaAdapter(LLMAdapter):
         )
         raw = await self._chat(prompt, format="json")
         return ClusterLabel.model_validate_json(raw)
+
+    async def extract_search_keywords(
+        self,
+        problem: str,
+        audience: str | None,
+    ) -> list[str]:
+        try:
+            response = await self._client.chat(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": KEYWORD_EXTRACT_SYSTEM_PROMPT},
+                    {"role": "user", "content": KEYWORD_EXTRACT_USER_PROMPT.format(
+                        problem=problem,
+                        audience=audience or "(not specified)",
+                    )},
+                ],
+                format="json",
+            )
+            raw = response.message.content or ""
+            data = json.loads(raw)
+            return [k.lower().strip() for k in data.get("keywords", []) if k.strip()][:5]
+        except Exception as exc:
+            log.warning("ollama_keyword_extract_failed", error=str(exc))
+            return []

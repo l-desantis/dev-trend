@@ -21,3 +21,7 @@ class ClusterLabel(BaseModel):
     why_now: str
     specificity: int = Field(ge=1, le=5)
     suggested_category_slug: str | None = None
+
+
+class SearchKeywords(BaseModel):
+    keywords: list[str]

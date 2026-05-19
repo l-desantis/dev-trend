@@ -45,3 +45,24 @@ async def test_label_cluster_specificity_scales_with_size(adapter: MockLLMAdapte
 async def test_label_cluster_uses_first_category(adapter: MockLLMAdapter) -> None:
     result = await adapter.label_cluster(["pain 1", "pain 2"], ["devtools", "wellness"])
     assert result.suggested_category_slug == "devtools"
+
+
+@pytest.mark.asyncio
+async def test_mock_extract_search_keywords_returns_list() -> None:
+    from app.llm.mock_adapter import MockLLMAdapter
+    adapter = MockLLMAdapter()
+    kws = await adapter.extract_search_keywords(
+        "habit tracking apps fail to engage ADHD adults",
+        "ADHD adults",
+    )
+    assert isinstance(kws, list)
+    assert 1 <= len(kws) <= 5
+    assert all(isinstance(k, str) and k == k.lower() for k in kws)
+
+
+@pytest.mark.asyncio
+async def test_mock_extract_search_keywords_no_audience() -> None:
+    from app.llm.mock_adapter import MockLLMAdapter
+    adapter = MockLLMAdapter()
+    kws = await adapter.extract_search_keywords("react native offline sync", None)
+    assert isinstance(kws, list)

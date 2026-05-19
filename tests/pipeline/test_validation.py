@@ -8,11 +8,13 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.llm.mock_adapter import MockLLMAdapter
 from app.models import (
     CandidateValidation,
     OpportunityCandidate,
     SourceItem,
 )
+from app.pipeline import validation as validation_module
 from app.pipeline.validation import (
     ValidationReport,
     count_show_hn_matches,
@@ -265,3 +267,84 @@ async def test_search_github_repos_handles_single_keyword() -> None:
 
     assert client.request.await_count == 1
     assert result["repo_count"] == 1
+
+
+async def test_run_validation_uses_llm_keywords_when_provided(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate = OpportunityCandidate(
+        problem_statement="habit tracking for diverse needs",
+        audience="ADHD adults",
+        specificity=3,
+    )
+    session.add(candidate)
+    await session.commit()
+
+    llm = MockLLMAdapter()
+    llm.extract_search_keywords = AsyncMock(return_value=["adhd", "habit", "tracker"])
+
+    # Spy on the stopword path so we can assert it was NOT called for GitHub search.
+    # NOTE: count_show_hn_matches calls extract_keywords for title pattern matching,
+    # so the spy may still be invoked once. We assert that the GitHub-search path used
+    # the LLM keywords by checking llm.extract_search_keywords was awaited.
+    real_extract = validation_module.extract_keywords
+    spy = MagicMock(side_effect=real_extract)
+    monkeypatch.setattr(validation_module, "extract_keywords", spy)
+
+    client = await _make_github_client()
+    report = await run_validation(session, client, llm=llm)
+
+    assert report.validated == 1
+    llm.extract_search_keywords.assert_awaited_once_with(
+        candidate.problem_statement, candidate.audience
+    )
+
+
+async def test_run_validation_falls_back_to_stopwords_when_llm_returns_empty(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate = OpportunityCandidate(
+        problem_statement="habit tracking for focus",
+        audience="ADHD adults",
+        specificity=3,
+    )
+    session.add(candidate)
+    await session.commit()
+
+    llm = MockLLMAdapter()
+    llm.extract_search_keywords = AsyncMock(return_value=[])  # empty → must fall back
+
+    real_extract = validation_module.extract_keywords
+    spy = MagicMock(side_effect=real_extract)
+    monkeypatch.setattr(validation_module, "extract_keywords", spy)
+
+    client = await _make_github_client()
+    report = await run_validation(session, client, llm=llm)
+
+    assert report.validated == 1
+    assert report.errors == 0
+    # Spy must have been called for the GitHub-search path (fallback fired),
+    # plus once more inside count_show_hn_matches. At least 2 calls confirms the fallback.
+    assert spy.call_count >= 2
+
+
+async def test_run_validation_without_llm_uses_stopwords(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate = OpportunityCandidate(
+        problem_statement="habit tracking for focus",
+        audience="ADHD adults",
+        specificity=3,
+    )
+    session.add(candidate)
+    await session.commit()
+
+    real_extract = validation_module.extract_keywords
+    spy = MagicMock(side_effect=real_extract)
+    monkeypatch.setattr(validation_module, "extract_keywords", spy)
+
+    client = await _make_github_client()
+    report = await run_validation(session, client)  # no llm kwarg
+
+    assert report.validated == 1
+    assert spy.call_count >= 1

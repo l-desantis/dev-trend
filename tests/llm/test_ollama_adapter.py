@@ -95,3 +95,22 @@ async def test_label_cluster_invalid_specificity_raises() -> None:
     with patch.object(adapter._client, "chat", new=AsyncMock(return_value=_chat_response(payload))):
         with pytest.raises(ValidationError):
             await adapter.label_cluster(["evidence"], ["wellness"])
+
+
+async def test_ollama_extract_search_keywords_happy_path() -> None:
+    import json
+    adapter = _adapter()
+    payload = json.dumps({"keywords": ["adhd", "habit", "tracker"]})
+    with patch.object(adapter._client, "chat", new=AsyncMock(return_value=_chat_response(payload))):
+        result = await adapter.extract_search_keywords(
+            "habit tracking apps fail to engage ADHD adults",
+            "ADHD adults",
+        )
+    assert result == ["adhd", "habit", "tracker"]
+
+
+async def test_ollama_extract_search_keywords_bad_json_returns_empty() -> None:
+    adapter = _adapter()
+    with patch.object(adapter._client, "chat", new=AsyncMock(return_value=_chat_response("not json"))):
+        result = await adapter.extract_search_keywords("some problem", None)
+    assert result == []

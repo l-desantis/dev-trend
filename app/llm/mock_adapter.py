@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from app.llm.base import LLMAdapter
@@ -58,3 +59,20 @@ class MockLLMAdapter(LLMAdapter):
             specificity=min(5, max(1, len(evidence_texts) // 2)),
             suggested_category_slug=(category_slugs[0] if category_slugs else None),
         )
+
+    async def extract_search_keywords(
+        self,
+        problem: str,
+        audience: str | None,
+    ) -> list[str]:
+        # 4+ chars keeps cohort tokens like "adhd" — the whole point of the LLM path
+        # over the stopword path is to surface domain-specific short nouns.
+        combined = f"{audience or ''} {problem}"
+        words = [w.lower() for w in re.findall(r"[a-zA-Z]{4,}", combined)]
+        seen: set[str] = set()
+        result: list[str] = []
+        for w in words:
+            if w not in seen:
+                seen.add(w)
+                result.append(w)
+        return result[:4]

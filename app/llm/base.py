@@ -31,6 +31,18 @@ class LLMAdapter(ABC):
         category_slugs: list[str],
     ) -> ClusterLabel: ...
 
+    @abstractmethod
+    async def extract_search_keywords(
+        self,
+        problem: str,
+        audience: str | None,
+    ) -> list[str]:
+        """Return 3-5 domain-specific keywords for GitHub search.
+
+        Returns an empty list on failure — callers must fall back to
+        the stopword-based extractor in that case.
+        """
+
     @property
     @abstractmethod
     def model_name(self) -> str:

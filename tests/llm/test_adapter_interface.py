@@ -8,7 +8,7 @@ from app.llm.mock_adapter import MockLLMAdapter
 
 
 def test_concrete_adapters_implement_v4_methods() -> None:
-    required = ["extract_pain_point", "label_cluster", "model_name"]
+    required = ["extract_pain_point", "label_cluster", "extract_search_keywords", "model_name"]
     for name in required:
         assert hasattr(MockLLMAdapter, name), f"MockLLMAdapter missing {name}"
 
