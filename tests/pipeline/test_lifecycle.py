@@ -79,6 +79,17 @@ def test_derive_handles_null_last_evidence_at() -> None:
     assert derive_lifecycle_state(c, history) == "emerging"
 
 
+def test_derive_null_last_evidence_old_candidate_goes_dormant() -> None:
+    """A candidate created 20 days ago with no attached evidence is dormant, not immortal.
+
+    Regression: None last_evidence_at was treated as age 0, so evidence-less
+    candidates could never go dormant and stayed 'hot' forever (the staleness bug).
+    """
+    c = _candidate(age_days=20, last_evidence_days_ago=None)
+    history = [_score_row(1, momentum=70, frequency=40)]  # would otherwise be "hot"
+    assert derive_lifecycle_state(c, history) == "dormant"
+
+
 def test_derive_none_when_no_match() -> None:
     c = _candidate(age_days=30, last_evidence_days_ago=5)
     history = [_score_row(1, momentum=40, frequency=40)]

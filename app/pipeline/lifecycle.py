@@ -40,11 +40,12 @@ def derive_lifecycle_state(
 
     age_days = (latest.scored_at - candidate.created_at).days
 
-    last_pp_age = (
-        (latest.scored_at - candidate.last_evidence_at).days
-        if candidate.last_evidence_at is not None
-        else 0
-    )
+    # No attached evidence means the candidate's freshest signal is its birth
+    # (the pain points it was clustered from), not "today". Falling back to
+    # created_at lets evidence-less candidates age into 'dormant' instead of
+    # staying immortally 'hot'. created_at is always set (see age_days above).
+    evidence_ref = candidate.last_evidence_at or candidate.created_at
+    last_pp_age = (latest.scored_at - evidence_ref).days
 
     if last_pp_age >= 14:
         return "dormant"
