@@ -18,12 +18,27 @@ def test_config_v4_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.nim_embedding_model == "nvidia/nv-embedqa-e5-v5"
     assert s.extraction_batch_size == 20
     assert s.embedding_batch_size == 64
-    assert s.identity_resolution_threshold == 0.82
+    assert s.identity_resolution_threshold == 0.65
     assert s.clustering_min_cluster_size == 3
     assert s.specificity_gate == 2
     assert s.max_alerts_per_day == 3
     assert s.pipeline_cron_hour == 3
     assert s.pipeline_cron_minute == 30
+
+
+def test_identity_resolution_threshold_is_recalibrated_for_e5(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prod runs nvidia/nv-embedqa-e5-v5; 0.82 (nomic) is unreachable there.
+
+    Calibrated 2026-06-24 via scripts/diagnose_attachment.py: TP band p50 0.704,
+    novel-leftover ceiling 0.622 → 0.65 sits in the trough.
+    """
+    monkeypatch.delenv("IDENTITY_RESOLUTION_THRESHOLD", raising=False)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    from app.config import get_settings
+    get_settings.cache_clear()
+    assert get_settings().identity_resolution_threshold == 0.65
 
 
 def test_env_example_covers_required_settings() -> None:

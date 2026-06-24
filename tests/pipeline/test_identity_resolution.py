@@ -101,6 +101,37 @@ async def test_identity_no_candidates_yet(session: AsyncSession) -> None:
     assert report.unattached_checked == 0
 
 
+async def test_identity_attaches_in_recalibrated_band(session: AsyncSession) -> None:
+    """A ~0.70-cosine pain point attaches at 0.65 (new) but not at 0.82 (old)."""
+    item = await _seed_item(session)
+    centroid = [1.0] + [0.0] * 31
+    candidate = OpportunityCandidate(
+        problem_statement="test", specificity=1, centroid=centroid, is_archived=False
+    )
+    session.add(candidate)
+    await session.flush()
+
+    # Unit vector at cosine 0.70 to the centroid: [0.70, sqrt(1-0.49), 0...]
+    import math
+    embedding = [0.70, math.sqrt(1.0 - 0.49)] + [0.0] * 30
+    pp = PainPoint(
+        source_item_id=item.id, extractor_model="mock",
+        problem_text="moderately similar", audience="users", embedding=embedding,
+    )
+    session.add(pp)
+    await session.commit()
+
+    # Old threshold rejects it
+    report_old = await run_identity_resolution(session, threshold=0.82)
+    assert report_old.attached == 0
+
+    # Recalibrated threshold attaches it
+    report_new = await run_identity_resolution(session, threshold=0.65)
+    assert report_new.attached == 1
+    pp_refreshed = (await session.execute(select(PainPoint))).scalar_one()
+    assert pp_refreshed.candidate_id == candidate.id
+
+
 async def test_centroid_recomputation_correct(session: AsyncSession) -> None:
     item = await _seed_item(session)
     centroid = [1.0] + [0.0] * 31

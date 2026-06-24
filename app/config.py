@@ -152,7 +152,11 @@ class Settings(BaseSettings):
     # v4 pipeline settings
     extraction_batch_size: int = 20
     embedding_batch_size: int = 64
-    identity_resolution_threshold: float = 0.82
+    # Calibrated for prod embedding space nvidia/nv-embedqa-e5-v5 (2026-06-24).
+    # 0.82 was tuned for Ollama nomic-embed-text and is unreachable under e5
+    # (TP band p50 0.704, novel-leftover ceiling 0.622). See
+    # scripts/diagnose_attachment.py and docs/superpowers/plans/2026-06-24-*.
+    identity_resolution_threshold: float = 0.65
     clustering_min_cluster_size: int = 3
     specificity_gate: int = 2
     max_alerts_per_day: int = 3
