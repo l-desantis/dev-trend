@@ -254,7 +254,7 @@ Eight stages, composed in `app/pipeline/orchestrator.py`:
 |---|---|---|
 | 1 — Extract | `extract.py` | LLM classifies each pending `SourceItem` → `PainPoint` or skip |
 | 2 — Embed | `embed.py` | Batch-embed pain-points using `EmbeddingAdapter` |
-| 3 — Identity | `identity_resolution.py` | Attach unmatched pain-points to nearest candidate (cosine ≥ 0.82) |
+| 3 — Identity | `identity_resolution.py` | Attach unmatched pain-points to nearest candidate (cosine ≥ 0.65) |
 | 4 — Cluster | `clustering.py` | HDBSCAN on remaining unmatched → new `OpportunityCandidate` rows |
 | 5 — Label | `labelling.py` | LLM labels each unlabelled candidate |
 | 6 — Validate | `validation.py` | GitHub stars search for related repos |

@@ -90,7 +90,7 @@ Ingestion (Reddit / HN / GitHub / Play Store)
 Pipeline  (daily 03:30 UTC)
   1. LLM extract pain-points
   2. Embed (Ollama or NIM)
-  3. Identity resolve (cosine ≥ 0.82)
+  3. Identity resolve (cosine ≥ 0.65)
   4. HDBSCAN cluster → OpportunityCandidate
   5. LLM label clusters
   6. GitHub validation
