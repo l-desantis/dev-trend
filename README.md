@@ -3,7 +3,7 @@
 > **v4.C — Feature complete.** Play Store reviews, NVIDIA NIM adapters, weekly re-cluster, and v3 decommissioning are all done.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%20License%202.0-blue)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-pytest-green?style=flat-square)](tests/)
 
 An **opportunity discovery engine** for indie developers. DevTrend continuously ingests developer chatter (Reddit, HN, GitHub, Play Store reviews), extracts pain-points via LLM, clusters them into app-opportunity hypotheses, scores them, and delivers the top candidates via a Telegram-first interface — no editorial curation required.
