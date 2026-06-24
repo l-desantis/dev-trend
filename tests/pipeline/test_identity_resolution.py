@@ -1,4 +1,6 @@
 """Tests for Stage 3 — identity resolution."""
+import math
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -112,7 +114,6 @@ async def test_identity_attaches_in_recalibrated_band(session: AsyncSession) -> 
     await session.flush()
 
     # Unit vector at cosine 0.70 to the centroid: [0.70, sqrt(1-0.49), 0...]
-    import math
     embedding = [0.70, math.sqrt(1.0 - 0.49)] + [0.0] * 30
     pp = PainPoint(
         source_item_id=item.id, extractor_model="mock",
