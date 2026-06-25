@@ -214,7 +214,6 @@ __marimo__/
 .claude/settings.local.json
 .claude/
 .agents/
-skills-lock.json
 
 # SOPS / deploy
 .env.local
