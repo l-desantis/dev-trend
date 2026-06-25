@@ -96,6 +96,22 @@ async def test_fetch_top_candidates_excludes_below_specificity(session: AsyncSes
     assert len(top) == 1
 
 
+async def test_fetch_top_candidates_excludes_dormant(session: AsyncSession) -> None:
+    # A dormant candidate (14+ days without fresh evidence) must not surface in the
+    # "what's trending" digest even with the highest score. Non-dormant states —
+    # including unclassified (None) actively-growing candidates — are kept.
+    await _seed_scored_candidate(session, score=95.0, lifecycle_state="dormant")
+    await _seed_scored_candidate(session, score=80.0, lifecycle_state="hot")
+    await _seed_scored_candidate(session, score=70.0, lifecycle_state=None)
+
+    top = await fetch_top_candidates(session, limit=3, min_specificity=3)
+
+    states = [c.lifecycle_state for c in top]
+    assert "dormant" not in states
+    assert len(top) == 2  # hot + unclassified kept, dormant dropped
+    assert top[0].lifecycle_state == "hot"  # highest remaining score leads
+
+
 def test_digest_renders_top_3() -> None:
     candidates = [
         OpportunityCandidate(id=i, problem_statement=f"opportunity {i}", specificity=3)

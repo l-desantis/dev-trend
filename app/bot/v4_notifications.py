@@ -51,6 +51,12 @@ async def fetch_top_candidates(
         .join(subq, OpportunityCandidate.id == subq.c.candidate_id)
         .where(OpportunityCandidate.is_archived.is_(False))
         .where(OpportunityCandidate.specificity >= min_specificity)
+        # Exclude dormant candidates (14+ days without fresh evidence): a daily
+        # "what's trending" digest should not surface stale opportunities, even
+        # when an aged candidate still carries a high score. IS DISTINCT FROM
+        # keeps unclassified (NULL) candidates, which are actively-growing but
+        # not yet labelled with a lifecycle state.
+        .where(OpportunityCandidate.lifecycle_state.is_distinct_from("dormant"))
         .order_by(subq.c.max_score.desc())
         .limit(limit)
     )
