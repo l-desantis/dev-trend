@@ -88,10 +88,15 @@ async def source_diversity_raw(
     return float(len(buckets))
 
 
-def validation_curve(repo_count: int, max_stars: int) -> float:
-    """Non-monotonic validation score per spec §5.2. Returns 0–100 directly."""
+def validation_curve(repo_count: int, max_stars: int) -> float | None:
+    """Non-monotonic validation score per spec §5.2. Returns 0–100 directly.
+
+    Returns ``None`` when ``repo_count == 0``: an empty GitHub result is treated
+    as no signal (likely a search miss, not a verified novel idea) and the
+    candidate_scorer renormalizes the remaining dimensions in response.
+    """
     if repo_count == 0:
-        return 30.0
+        return None
     if repo_count <= 5 and max_stars <= 5_000:
         return 90.0
     if repo_count <= 20 and max_stars <= 20_000:

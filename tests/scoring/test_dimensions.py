@@ -101,10 +101,23 @@ async def test_source_diversity_distinct_buckets(session: AsyncSession) -> None:
 
 
 def test_validation_curve_each_band() -> None:
-    assert validation_curve(0, 0) == 30.0
+    assert validation_curve(0, 0) is None
     assert validation_curve(3, 2000) == 90.0
     assert validation_curve(10, 10000) == 70.0
     assert validation_curve(25, 50000) == 30.0
+
+
+def test_validation_curve_returns_none_for_zero_repos() -> None:
+    # repo_count == 0 is no-signal (usually a search miss, not verified novelty),
+    # so the scorer drops the validation dimension rather than rewarding 30/100.
+    assert validation_curve(0, 0) is None
+    assert validation_curve(0, 9999) is None
+
+
+def test_validation_curve_still_returns_score_for_nonzero() -> None:
+    assert validation_curve(3, 1000) == 90.0
+    assert validation_curve(10, 10_000) == 70.0
+    assert validation_curve(100, 100_000) == 30.0
 
 
 def test_specificity_raw_mapping() -> None:
