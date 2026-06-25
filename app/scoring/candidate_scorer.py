@@ -90,7 +90,7 @@ async def score_all_candidates(
         else:
             repo_count, max_stars = 0, 0
 
-        val_score = validation_curve(repo_count, max_stars)
+        val_score = validation_curve(repo_count, max_stars)  # may be None
         spec_score = specificity_raw(c)
 
         breakdown = {
@@ -102,13 +102,20 @@ async def score_all_candidates(
             "weights": WEIGHTS,
         }
 
-        total = (
+        weighted = (
             freq_scores[c.id] * WEIGHTS["frequency"]
             + mom_scores[c.id] * WEIGHTS["momentum"]
             + div_scores[c.id] * WEIGHTS["source_diversity"]
-            + val_score * WEIGHTS["validation"]
             + spec_score * WEIGHTS["specificity"]
         )
+        if val_score is None:
+            # No GitHub signal: drop the validation dimension and rescale the
+            # remaining four weights to sum to 1.0, so the candidate is neither
+            # rewarded nor penalised on that axis.
+            remaining = 1.0 - WEIGHTS["validation"]
+            total = weighted / remaining if remaining > 0 else 0.0
+        else:
+            total = weighted + val_score * WEIGHTS["validation"]
 
         row = CandidateScoreHistory(
             candidate_id=c.id,
