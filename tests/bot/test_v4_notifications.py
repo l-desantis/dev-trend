@@ -110,6 +110,7 @@ async def test_fetch_top_candidates_excludes_dormant(session: AsyncSession) -> N
     assert "dormant" not in states
     assert len(top) == 2  # hot + unclassified kept, dormant dropped
     assert top[0].lifecycle_state == "hot"  # highest remaining score leads
+    assert top[1].lifecycle_state is None  # NULL/unclassified explicitly kept
 
 
 def test_digest_renders_top_3() -> None:
