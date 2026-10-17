@@ -1,1 +1,4 @@
-# CLAUDE.md — Project-level instructions for Claude Code
+# CLAUDE.md
+
+See [AGENTS.md](AGENTS.md) — single source of project instructions for all agents.
+
