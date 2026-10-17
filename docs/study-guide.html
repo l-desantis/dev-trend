@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevTrend — Study Guide</title>
+<style>
+  :root { --fg:#1b1f23; --muted:#57606a; --bg:#fff; --card:#f6f8fa; --line:#d0d7de; --accent:#0969da; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6edf3; --muted:#9198a1; --bg:#0d1117; --card:#161b22; --line:#30363d; --accent:#58a6ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:1060px; margin:0 auto; padding:2rem 1.25rem 6rem; }
+  h1 { font-size:2rem; margin:0 0 .25rem; }
+  h2 { margin-top:3rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  h3 { margin-top:2rem; }
+  .sub { color:var(--muted); margin-top:0; }
+  nav { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:1rem 1.25rem; margin:2rem 0; }
+  nav ol { margin:.25rem 0 0; padding-left:1.25rem; columns:2; }
+  a { color:var(--accent); }
+  pre { background:var(--card); border:1px solid var(--line); border-radius:8px;
+        padding:1rem; overflow-x:auto; font-size:13px; line-height:1.45; }
+  code { background:var(--card); padding:.1em .35em; border-radius:4px; font-size:.9em; }
+  pre code { background:none; padding:0; }
+  table { border-collapse:collapse; width:100%; margin:1rem 0; font-size:14px; }
+  th,td { border:1px solid var(--line); padding:.5rem .6rem; text-align:left; vertical-align:top; }
+  th { background:var(--card); }
+  .note { border-left:4px solid var(--accent); background:var(--card); padding:.75rem 1rem; border-radius:0 6px 6px 0; margin:1rem 0; }
+  .warn { border-left-color:#d1242f; }
+  .tag { display:inline-block; background:var(--card); border:1px solid var(--line);
+         border-radius:999px; padding:.05em .6em; font-size:12px; color:var(--muted); }
+  footer { margin-top:4rem; color:var(--muted); font-size:13px; border-top:1px solid var(--line); padding-top:1rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>DevTrend — Study Guide</h1>
+<p class="sub">An opportunity-discovery engine for indie devs. Ingest developer chatter →
+extract pain points with an LLM → cluster into opportunity candidates → score deterministically →
+push to Telegram. Version <strong>v4.D</strong>.</p>
+
+<nav>
+<strong>Contents</strong>
+<ol>
+  <li><a href="#tldr">The 60-second model</a></li>
+  <li><a href="#runtime">Runtime &amp; process layout</a></li>
+  <li><a href="#dataflow">Data flow end-to-end</a></li>
+  <li><a href="#scheduler">The scheduler (all 10 jobs)</a></li>
+  <li><a href="#pipeline">Pipeline stages 1–5</a></li>
+  <li><a href="#scoring">Validation, scoring &amp; lifecycle</a></li>
+  <li><a href="#model">Data model</a></li>
+  <li><a href="#llm">LLM &amp; embedding layer</a></li>
+  <li><a href="#delivery">Telegram delivery</a></li>
+  <li><a href="#config">Configuration cheat-sheet</a></li>
+  <li><a href="#ops">Ops, deploy &amp; diagnostics</a></li>
+  <li><a href="#traps">Traps, gotchas &amp; open gaps</a></li>
+  <li><a href="#quiz">Self-check questions</a></li>
+</ol>
+</nav>
+
+<h2 id="tldr">1. The 60-second model</h2>
+
+<p>DevTrend is a <strong>staged pipeline monolith driven by a scheduler</strong>. One FastAPI process
+hosts: the APScheduler job store, the Telegram bot (polling), and a <code>/health</code> endpoint.
+There are no microservices, no queue, no workers. Everything is async Python over PostgreSQL 16
+(async SQLAlchemy + Alembic).</p>
+
+<div class="note">
+<strong>The governing design rule:</strong> the LLM is used only where it is the best available tool;
+everything that must be reproducible is deterministic code.
+<ul>
+<li><strong>LLM does:</strong> unstructured text → structured <code>PainPoint</code> records (strict Pydantic schema), and naming/summarising clusters.</li>
+<li><strong>Deterministic code does:</strong> embedding, identity resolution, clustering, validation, scoring, lifecycle, ranking.</li>
+</ul>
+Consequence: aggregation and ranking are reproducible run-to-run, instead of being re-litigated by a model every night.
+</div>
+
+<h3>Key directories</h3>
+<table>
+<tr><th>Path</th><th>Responsibility</th></tr>
+<tr><td><code>app/main.py</code></td><td>FastAPI lifespan: logging, DB check, category sync, connectors, bot, optional backfill, scheduler start/shutdown.</td></tr>
+<tr><td><code>app/ingestion/</code></td><td>Connectors (github, hn, reddit, playstore, ios_rss), shared HTTP retry, backfill, <strong>scheduler.py</strong>.</td></tr>
+<tr><td><code>app/pipeline/</code></td><td>Stages: extract, embed, identity_resolution, clustering, labelling, validation, lifecycle, recluster, brief_generation, orchestrator.</td></tr>
+<tr><td><code>app/scoring/</code></td><td>Raw dimensions, percentile normalisation, composite scorer.</td></tr>
+<tr><td><code>app/llm/</code></td><td>Adapter factory: ollama / nim / openai / mock, for both chat and embeddings; prompts; rate limiter.</td></tr>
+<tr><td><code>app/bot/</code></td><td>Telegram handlers, formatter, digest &amp; lifecycle notifications, feedback buttons.</td></tr>
+<tr><td><code>app/models.py</code></td><td>All 10 SQLAlchemy tables.</td></tr>
+<tr><td><code>app/config.py</code></td><td>Single pydantic-settings <code>Settings</code> object, <code>@lru_cache</code>d.</td></tr>
+</table>
+
+<h2 id="runtime">2. Runtime &amp; process layout</h2>
+
+<pre><code>docker compose
+   postgres:16  ──healthy──▶  migrate (one-shot: alembic upgrade head)
+                                   │ completed_successfully
+                                   ▼
+                                  app  (uvicorn app.main:app, port 8000)
+                                   │
+          ┌────────────────────────┼────────────────────────┐
+          ▼                        ▼                        ▼
+   FastAPI /health          AsyncIOScheduler          Telegram bot
+   (+ routes_internal)      (10 jobs, in-proc)        (long polling)
+</code></pre>
+
+<p><strong>Startup order inside <code>lifespan()</code></strong> — this is the exam question:</p>
+<ol>
+<li><code>_configure_logging()</code> — structlog + stdlib unified under one <code>ProcessorFormatter</code>; noisy loggers (<code>httpx</code>, <code>telegram</code>, <code>uvicorn.access</code>) pinned to WARNING. <em>httpx logs would otherwise leak the bot token in URLs.</em></li>
+<li><code>check_db_reachable()</code> — fail fast if Postgres is down.</li>
+<li><code>sync_categories_from_yaml(data/categories.yaml)</code> — categories are config, not data entry.</li>
+<li>Build <code>httpx.AsyncClient</code> + <code>ConnectorRunRegistry</code> + the 3 always-on connectors (GitHub, HN, Reddit).</li>
+<li>If <code>TELEGRAM_BOT_TOKEN</code> set: build bot app, <code>initialize()</code> → <code>start()</code> → register the 8 slash commands → <code>updater.start_polling()</code>.</li>
+<li>If <code>BACKFILL_ON_EMPTY=true</code> <em>and</em> <code>source_items</code> is empty: run <code>bulk_backfill()</code> synchronously before the scheduler starts.</li>
+<li><code>build_scheduler(...)</code> then <code>scheduler.start()</code>.</li>
+<li><code>yield</code> … on shutdown: <code>scheduler.shutdown(wait=False)</code>, stop updater/bot, close HTTP client.</li>
+</ol>
+
+<div class="note warn"><strong>Trap:</strong> the scheduler is <em>in-process and in-memory</em>. A restart loses
+any pending/misfired job state; <code>misfire_grace_time</code> only covers a running process that was busy.
+Scaling to 2 app replicas would double-run every job — there is no distributed lock.</div>
+
+<h2 id="dataflow">3. Data flow end-to-end</h2>
+
+<pre><code>  EXTERNAL SOURCES
+  ├─ GitHub repo search API        (every 6h)
+  ├─ Hacker News / Algolia         (every 6h)   Ask HN + Show HN
+  ├─ Reddit per-subreddit RSS      (every 12h)  15 subs, ≥6s between calls
+  ├─ Play Store (google-play-scraper) (02:00)   reviews for TrackedApp rows
+  └─ iOS App Store RSS  [opt-in]      (02:30)   ENABLE_IOS_RSS=true
+            │
+            │  http_utils: retry + exponential backoff on 429/5xx (centralised)
+            ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │  source_items                                                │
+  │  UNIQUE(source_type, external_id) + ON CONFLICT DO NOTHING   │
+  │  → dedup happens in the DB, not in connector code            │
+  │  extraction_state = 'pending'                                │
+  └──────────────────────────────────────────────────────────────┘
+            │
+            ▼  DAILY PIPELINE 03:30 UTC — run_pipeline(), stages in order,
+               each stage opens its OWN session
+  ┌──────────────────────────────────────────────────────────────┐
+  │ 1 EXTRACT   LLM, batch=20   source_items → pain_points       │
+  │             strict Pydantic schema; sets extractor_model     │
+  │ 2 EMBED     batch=64        pain_points.embedding + .embedding_model
+  │ 3 RESOLVE   cosine ≥ 0.65   attach pain_point → existing candidate
+  │             per-embedding_model index — NEVER cross-model    │
+  │ 4 CLUSTER   HDBSCAN(min_cluster_size=3) over the LEFTOVERS   │
+  │             → new opportunity_candidates (label -1 = noise)  │
+  │ 5 LABEL     LLM             problem_statement, audience,     │
+  │                             why_now, specificity 1–5         │
+  └──────────────────────────────────────────────────────────────┘
+            │
+            ▼  DAILY SCORING 04:15 UTC — one job, four phases
+  ┌──────────────────────────────────────────────────────────────┐
+  │ a) run_validation()   GitHub search → candidate_validations  │
+  │                       (signal_type='composite', repo_count, max_stars)
+  │ b) score_all_candidates()  → candidate_score_history         │
+  │                       gate: specificity > SPECIFICITY_GATE(2)│
+  │                       idempotent per as_of date              │
+  │ c) update_lifecycle_states_and_emit_transitions()            │
+  │                       → lifecycle_events + transitions list  │
+  │ d) emit_lifecycle_alerts()  → Telegram (≤ MAX_ALERTS_PER_DAY)│
+  └──────────────────────────────────────────────────────────────┘
+            │
+            ▼  DAILY DIGEST 08:00 UTC
+       run_digest_job() → top digest_top_n (3) candidates,
+       brief generation (LLM headline + summary + evidence),
+       candidate_briefs row, Telegram message with 👍/👎 buttons
+            │
+            ▼  feedback
+       candidate_feedback  UNIQUE(candidate_id, user_id, brief_id)
+</code></pre>
+
+<h3>Weekly / maintenance flows</h3>
+<pre><code>  Mon 02:30  playstore_app_discovery  → refresh_app_list() → tracked_apps upsert
+                                        (re-reads data/playstore_seed_apps.yaml)
+  Sun 04:00  weekly_recluster         → merge drifted candidates,
+                                        split over-broad ones, relabel,
+                                        archive "monster" clusters (>100 pps, low cohesion)
+  Sun 03:00  weekly_pruning           → delete source_items older than 90d,
+                                        signals older than 30d; stamps maintenance_state
+</code></pre>
+
+<h2 id="scheduler">4. The scheduler — <code>app/ingestion/scheduler.py</code></h2>
+
+<p><code>build_scheduler(connectors, registry, settings, *, bot=None)</code> returns a single
+<code>AsyncIOScheduler</code> and registers every job. Three structural points:</p>
+<ul>
+<li><strong>Every job is defensive.</strong> Each wraps its body in <code>try/except Exception</code> and logs;
+a crashing job never kills the scheduler or the process.</li>
+<li><strong>Ingestion jobs are also time-boxed</strong> via <code>asyncio.wait_for(..., settings.ingestion_job_timeout_s)</code>
+(180 s default; ×4 for Play Store, ×2 for iOS). On timeout the <code>ConnectorRunRegistry</code> is marked
+with an error so <code>/sources</code> in the bot shows it.</li>
+<li><strong>Imports are deferred inside the job bodies</strong> — heavy modules (numpy, hdbscan, LLM adapters)
+are not imported at scheduler-build time, which keeps startup fast and avoids import cycles.</li>
+</ul>
+
+<h3>Job table</h3>
+<table>
+<tr><th>Job id</th><th>Trigger</th><th>Default time (UTC)</th><th>What it does</th><th>Guards</th></tr>
+<tr><td><code>github_ingestion</code></td><td>Interval</td><td>every 6 h</td><td>GitHub repo search → <code>source_items</code></td><td>max_instances=1, coalesce, grace 300 s, wait_for 180 s</td></tr>
+<tr><td><code>hn_ingestion</code></td><td>Interval</td><td>every 6 h</td><td>Algolia Ask HN / Show HN</td><td>same</td></tr>
+<tr><td><code>reddit_ingestion</code></td><td>Interval</td><td>every <code>REDDIT_CRON_INTERVAL_HOURS</code> (12 h)</td><td>RSS per subreddit, ≥6 s apart globally</td><td>same</td></tr>
+<tr><td><code>playstore_ingestion</code></td><td>Cron</td><td><code>PLAYSTORE_CRON_HOUR</code> = 02:00</td><td>Reviews for every <code>TrackedApp</code></td><td>grace 3600 s, wait_for 720 s</td></tr>
+<tr><td><code>ios_rss_ingestion</code> <span class="tag">opt-in</span></td><td>Cron</td><td>02:30</td><td>iOS reviews RSS; needs <code>ios_app_id</code> on <code>TrackedApp</code></td><td>only if <code>ENABLE_IOS_RSS=true</code></td></tr>
+<tr><td><code>playstore_app_discovery</code></td><td>Cron</td><td>Mon 02:30</td><td>Upsert <code>tracked_apps</code> from the seed YAML</td><td>max_instances=1, coalesce</td></tr>
+<tr><td><code>daily_pipeline</code></td><td>Cron</td><td>03:30 (<code>PIPELINE_CRON_HOUR/MINUTE</code>)</td><td><code>run_pipeline()</code> — stages 1–5</td><td>grace 3600 s</td></tr>
+<tr><td><code>weekly_pruning</code></td><td>Cron</td><td>Sun 03:00 (<code>PRUNING_CRON_HOUR</code>)</td><td><code>prune_old_data()</code>, 90 d / 30 d retention</td><td>grace 3600 s</td></tr>
+<tr><td><code>daily_scoring</code></td><td>Cron</td><td>04:15 (<code>SCORING_CRON_HOUR/MINUTE</code>)</td><td>validation → score → lifecycle → alerts</td><td>grace 3600 s; GitHub client closed in <code>finally</code></td></tr>
+<tr><td><code>weekly_recluster</code></td><td>Cron</td><td>Sun 04:00</td><td><code>run_weekly_recluster()</code> merge/split/relabel</td><td>max_instances=1, coalesce</td></tr>
+<tr><td><code>daily_digest</code></td><td>Cron</td><td>08:00 (<code>DIGEST_CRON_HOUR/MINUTE</code>)</td><td>Top-3 digest to Telegram</td><td>no-op if <code>bot is None</code></td></tr>
+</table>
+
+<h3>Why this ordering matters</h3>
+<pre><code>02:00  playstore ingest ─┐
+02:30  app discovery (Mon)│ fresh SourceItems land BEFORE the pipeline
+03:00  pruning (Sun)      │ old rows gone before we spend LLM tokens on them
+03:30  pipeline ──────────┘ extract→embed→resolve→cluster→label
+04:00  recluster (Sun)      runs AFTER the pipeline so it sees today's candidates
+04:15  scoring              needs today's candidates + pain points to exist
+08:00  digest               needs today's scores + lifecycle states
+</code></pre>
+<p>The comment in the Play Store job states the intent explicitly: it runs before the pipeline
+<em>deliberately</em> so same-day reviews make the same day's digest. Any schedule change must keep
+this <strong>ingest → pipeline → score → deliver</strong> chain in order.</p>
+
+<div class="note"><strong>APScheduler flags, in plain English.</strong>
+<code>max_instances=1</code>: never run two copies of the same job concurrently.
+<code>coalesce=True</code>: if several fire times were missed, run once, not N times.
+<code>misfire_grace_time=N</code>: if the job is late by more than N seconds, skip it instead of running stale.
+Ingestion uses 300 s (a missed 6-hour tick is cheap to skip); pipeline/scoring/digest use 3600 s
+(losing a day's run is expensive, so allow an hour of slack).</div>
+
+<h2 id="pipeline">5. Pipeline stages 1–5 — <code>app/pipeline/orchestrator.py</code></h2>
+
+<p><code>run_pipeline()</code> is deliberately boring: five sequential awaits, each in its own
+<code>async with session_factory() as session</code>, each returning a typed <code>*Report</code> dataclass
+aggregated into <code>PipelineReport</code>. Per-stage sessions mean a late failure doesn't roll back
+earlier stages' work.</p>
+
+<table>
+<tr><th>#</th><th>Stage</th><th>Input → output</th><th>Key knob</th></tr>
+<tr><td>1</td><td><code>run_extraction</code></td><td><code>source_items</code> (state=pending) → <code>pain_points</code></td><td><code>EXTRACTION_BATCH_SIZE=20</code>, optional <code>since</code>/<code>limit</code></td></tr>
+<tr><td>2</td><td><code>run_embedding</code></td><td>pain points without embedding → vector + <code>embedding_model</code></td><td><code>EMBEDDING_BATCH_SIZE=64</code></td></tr>
+<tr><td>3</td><td><code>run_identity_resolution</code></td><td>unattached pain points → <code>candidate_id</code> set</td><td><code>IDENTITY_RESOLUTION_THRESHOLD=0.65</code></td></tr>
+<tr><td>4</td><td><code>run_clustering</code></td><td>still-unattached pain points → new candidates</td><td><code>CLUSTERING_MIN_CLUSTER_SIZE=3</code></td></tr>
+<tr><td>5</td><td><code>run_labelling</code></td><td>candidates with <code>labeller_model IS NULL</code> → named</td><td>LLM</td></tr>
+</table>
+
+<h3>Stage 3 — identity resolution (the most load-bearing stage)</h3>
+<pre><code>active candidates WHERE centroid IS NOT NULL
+      │ group by embedding_model          ← prevents 768-d vs 1024-d vs 1536-d mixing
+      ▼
+EmbeddingIndex per model  (built ONCE per model: O(M), not O(N·M))
+      │
+unattached pain points WHERE embedding IS NOT NULL
+      │ nearest centroid in the SAME embedding_model bucket
+      ▼
+cosine ≥ threshold (0.65) ? attach + refresh centroid/last_evidence_at : leave for stage 4
+</code></pre>
+<p>This stage is why the system doesn't re-discover the same theme every night. If it
+under-attaches you get duplicate candidates daily; if it over-attaches you get a
+"monster candidate" absorbing everything. Both failure modes are listed in the README's
+diagnostics section, with <code>scripts/diagnose_attachment.py</code> as the instrument.</p>
+
+<div class="note"><strong>The 0.82 → 0.65 story.</strong> The threshold was originally tuned for Ollama
+<code>nomic-embed-text</code> (768-d). Under NVIDIA <code>nv-embedqa-e5-v5</code> (1024-d) the true-positive band
+sits at p50 ≈ 0.704 with a novel-leftover ceiling of 0.622, so 0.82 was unreachable and nothing ever
+attached. 0.65 sits between those two numbers. <em>The threshold is a property of the embedding
+model, not of the problem domain.</em></div>
+
+<h3>Stage 4 — clustering</h3>
+<p><code>_cluster_labels()</code> tries <code>hdbscan.HDBSCAN(min_cluster_size, metric="euclidean")</code> and falls
+back to <code>AgglomerativeClustering(n_clusters=n//min_cluster_size, metric="cosine", linkage="average")</code>
+on <code>ImportError</code>, post-filtering clusters smaller than <code>min_cluster_size</code> to noise (<code>-1</code>).
+<code>hdbscan</code> is intentionally <em>not</em> in <code>pyproject.toml</code> — the native binary is unreliable on WSL2,
+so the import-and-fallback is the safety net.</p>
+<p class="tag">Known inconsistency: clustering uses Euclidean, identity resolution uses cosine. On
+normalised vectors these are monotonically related, but the mismatch is by omission, not design.</p>
+
+<h2 id="scoring">6. Validation, scoring &amp; lifecycle</h2>
+
+<h3>a) GitHub validation — <code>app/pipeline/validation.py</code></h3>
+<p>Searches GitHub for repos matching candidate keywords (LLM-extracted) and writes a
+<code>candidate_validations</code> row with <code>signal_type="composite"</code> and
+<code>metadata_json = {repo_count, max_stars}</code>.</p>
+
+<h3>b) Scoring — <code>app/scoring/</code></h3>
+<p>Gate first: only <code>is_archived = false</code> AND <code>specificity &gt; SPECIFICITY_GATE (2)</code> candidates
+are scored. The job is <strong>idempotent per <code>as_of</code> date</strong> — it deletes that day's existing
+<code>candidate_score_history</code> rows before inserting, so a re-run doesn't double-count.</p>
+
+<table>
+<tr><th>Dimension</th><th>Weight</th><th>Raw computation</th><th>Normalisation</th></tr>
+<tr><td><code>momentum</code></td><td>0.30</td><td><code>rolling_slope()</code> of daily pain-point counts over 7 days</td><td>percentile</td></tr>
+<tr><td><code>frequency</code></td><td>0.25</td><td>count of pain points in the last 30 days</td><td>percentile</td></tr>
+<tr><td><code>validation</code></td><td>0.20</td><td><code>validation_curve(repo_count, max_stars)</code></td><td>already 0–100</td></tr>
+<tr><td><code>source_diversity</code></td><td>0.15</td><td>distinct source buckets (<code>reddit:&lt;sub&gt;</code>, <code>playstore:&lt;app_id&gt;</code>, else source_type)</td><td>percentile</td></tr>
+<tr><td><code>specificity</code></td><td>0.10</td><td><code>specificity × 20</code> → 20–100</td><td>already 0–100</td></tr>
+</table>
+
+<p><strong>The validation curve is non-monotonic on purpose</strong> — more GitHub repos is not linearly worse:</p>
+<pre><code>repo_count == 0                       → None   (NO SIGNAL, not "novel";
+                                                 likely a search miss →
+                                                 remaining weights renormalised)
+repo_count ≤ 5  and max_stars ≤ 5000  → 90   someone tried it, nobody won → best
+repo_count ≤ 20 and max_stars ≤ 20000 → 70   real market, beatable
+otherwise                             → 30   crowded / solved
+</code></pre>
+
+<p><strong>Source diversity is bucketed, not typed.</strong> Ten complaints from ten different
+subreddits score higher than ten from <code>r/startups</code> alone — the bucket key is
+<code>reddit:&lt;subreddit&gt;</code>, not <code>"reddit"</code>. Same for individual Play Store apps. This is the
+anti-echo-chamber mechanism.</p>
+
+<p>Percentile normalisation (<code>normalize_with_neutral_fallback</code>) means scores are
+<strong>relative to the current candidate population</strong>, with a neutral value substituted when the
+population is too small for percentiles to mean anything. A score is a rank, not an absolute.</p>
+
+<h3>c) Lifecycle — <code>app/pipeline/lifecycle.py</code></h3>
+<p><code>derive_lifecycle_state()</code> reads the <em>normalised</em> momentum and frequency from the latest
+score row and returns one of <code>emerging | hot | saturated | dormant | None</code>:</p>
+<pre><code>evidence_ref = candidate.last_evidence_at or candidate.created_at   ← the bug fix
+last_pp_age  = (scored_at - evidence_ref).days
+age_days     = (scored_at - created_at).days
+
+if last_pp_age >= 14                                  → "dormant"   (checked FIRST)
+if momentum ≥ 60 and frequency < 30 and age_days < 14 → "emerging"
+if momentum ≥ 60 and frequency ≥ 30                   → "hot"
+if frequency ≥ 70 and momentum < 30                   → "saturated"
+otherwise                                             → None (unclassified)
+</code></pre>
+<div class="note warn"><strong>The "immortal hot" bug.</strong> When <code>last_evidence_at</code> was NULL the age
+computed as 0, so evidence-less candidates could never reach <code>dormant</code> and sat at <code>hot</code> forever.
+The fallback to <code>created_at</code> fixes it: a candidate's freshest signal is its birth, not "today".</div>
+<p>Only <em>changed</em> states produce a <code>lifecycle_events</code> row. A transition to <code>None</code> is recorded
+but never alerted. Real transitions are returned sorted by score DESC, so
+<code>emit_lifecycle_alerts()</code> can truncate at <code>MAX_ALERTS_PER_DAY = 3</code> and keep the best ones.</p>
+
+<h2 id="model">7. Data model — <code>app/models.py</code></h2>
+
+<pre><code> categories ─┬──< source_items ──< pain_points >── opportunity_candidates
+             └──<────────────────────────────────────────┘ (category_id)
+                                                     │
+                      ┌──────────────┬───────────────┼──────────────┬──────────────┐
+                      ▼              ▼               ▼              ▼              ▼
+            candidate_validations  candidate_    candidate_   candidate_    lifecycle_events
+                                   score_history  briefs       feedback
+ tracked_apps        (Play Store / iOS app registry, fed by weekly discovery)
+ maintenance_state   (single row: last_pruned_at)
+</code></pre>
+
+<table>
+<tr><th>Table</th><th>Notes worth memorising</th></tr>
+<tr><td><code>source_items</code></td><td><code>UNIQUE(source_type, external_id)</code> is the dedup mechanism. <code>role</code> (default <code>extraction</code>) and <code>extraction_state</code> (default <code>pending</code>) drive the pipeline's work queue.</td></tr>
+<tr><td><code>pain_points</code></td><td><code>candidate_id</code> NULL = not yet attached (stage 3/4 input). <code>embedding</code> is JSONB, <code>embedding_model</code> is the <em>bucket key</em> — indexed and never crossed.</td></tr>
+<tr><td><code>opportunity_candidates</code></td><td><code>labeller_model IS NULL</code> = unlabelled sentinel. <code>centroid</code> + <code>embedding_model</code> feed identity resolution. <code>merged_into_id</code> is a self-FK used by re-clustering. <code>is_archived</code> is the soft-delete / monster-cluster escape hatch.</td></tr>
+<tr><td><code>candidate_score_history</code></td><td>Append-only time series; <code>score_breakdown_json</code> holds the per-dimension raw+normalised values that lifecycle later reads.</td></tr>
+<tr><td><code>candidate_feedback</code></td><td><code>UNIQUE(candidate_id, user_id, brief_id)</code> — one vote per user per brief.</td></tr>
+<tr><td><code>lifecycle_events</code></td><td><code>was_alerted</code> prevents re-notifying; NULL <code>new_state</code> = dropped to unclassified.</td></tr>
+</table>
+<p>All timestamps are <code>TIMESTAMPTZ</code>: <code>models.py</code> shadows the <code>DateTime</code> name with
+<code>DateTime(timezone=True)</code> at module level because asyncpg rejects naive datetimes. Schema changes
+go through Alembic (<code>alembic upgrade head</code>), run as the one-shot <code>migrate</code> compose service.</p>
+
+<h2 id="llm">8. LLM &amp; embedding layer — <code>app/llm/</code></h2>
+
+<p>Two parallel abstractions — <code>LLMAdapter</code> (chat/extraction/labelling) and
+<code>EmbeddingAdapter</code> — each with four implementations behind
+<code>make_llm_adapter(settings)</code> / <code>make_embedding_adapter(settings)</code>. The provider is chosen by
+<code>LLM_PROVIDER</code> and <code>EMBEDDING_PROVIDER</code>, which are <em>independent</em>.</p>
+
+<table>
+<tr><th>Provider</th><th>Chat model</th><th>Embedding model (dims)</th><th>Structured-output strategy</th></tr>
+<tr><td><code>ollama</code></td><td><code>qwen2.5</code></td><td><code>nomic-embed-text</code> (768)</td><td>JSON mode → Pydantic validation</td></tr>
+<tr><td><code>nim</code></td><td><code>meta/llama-3.1-70b-instruct</code></td><td><code>nvidia/nv-embedqa-e5-v5</code> (1024)</td><td>OpenAI-compatible; rate limiter at 40 rpm</td></tr>
+<tr><td><code>openai</code></td><td><code>gpt-4.1-nano</code></td><td><code>text-embedding-3-small</code> (1536)</td><td>native <code>parse</code> API with a Pydantic response model</td></tr>
+<tr><td><code>mock</code></td><td>—</td><td>—</td><td>Deterministic stub; the test suite runs offline</td></tr>
+</table>
+
+<p>Structured output is <strong>enforced, not hoped for</strong>: either the provider's schema-constrained
+parse or JSON mode followed by Pydantic validation. Prompts live in <code>app/llm/prompts.py</code> as
+templates, not inline f-strings, so they are diffable and testable.</p>
+
+<div class="note warn"><strong>Embedding buckets are a one-way door.</strong> Each provider's vectors live in
+their own <code>embedding_model</code> bucket and cross-provider identity resolution is <em>disabled by
+design</em> (different dimensionality, different geometry). Switching providers mid-life means new pain
+points never match old candidates — they fork into a parallel universe of duplicates. Pick one
+provider per deployment; a one-off re-embed script is a known follow-up, not a shipped feature.</div>
+
+<h2 id="delivery">9. Telegram delivery — <code>app/bot/</code></h2>
+
+<p>Two push paths and one pull path.</p>
+<ul>
+<li><strong>Daily digest (08:00)</strong> — <code>run_digest_job()</code> takes the top <code>DIGEST_TOP_N</code> (3)
+candidates, generates a brief (LLM headline + summary + up to <code>BRIEF_MAX_EVIDENCE_ITEMS</code>=5
+evidence items), persists <code>candidate_briefs</code>, and sends a message with 👍/👎 inline buttons.</li>
+<li><strong>Lifecycle alerts (04:15, tail of the scoring job)</strong> — <code>emit_lifecycle_alerts()</code>
+on the transitions list, capped at <code>MAX_ALERTS_PER_DAY</code> (3), highest score first.</li>
+<li><strong>Commands (pull)</strong> — <code>/start</code>, <code>/help</code>, <code>/opportunities</code>,
+<code>/opportunity &lt;id&gt;</code>, <code>/categories</code>, <code>/category &lt;slug&gt;</code>,
+<code>/emerging</code>, <code>/sources</code>. <code>/sources</code> reads the in-memory
+<code>ConnectorRunRegistry</code>, which is why it reflects the <em>current process</em> only.</li>
+</ul>
+<p>Access is restricted by <code>TELEGRAM_ALLOWED_CHAT_IDS</code> (middleware). Messages are chunked
+against the 4096-character Telegram limit (<code>TELEGRAM_MAX_MESSAGE_CHARS</code>). Feedback
+(<code>candidate_feedback</code>) is captured today as a training/calibration signal — it does not yet feed
+back into scoring weights.</p>
+
+<h2 id="config">10. Configuration cheat-sheet — <code>app/config.py</code></h2>
+
+<p>One <code>Settings(BaseSettings)</code>, <code>@lru_cache</code>d via <code>get_settings()</code>, sourced from env then
+<code>.env</code>. A custom <code>_CommaSepMixin</code> lets list-valued env vars be written as plain
+<code>a,b,c</code> when they aren't valid JSON — so <code>REDDIT_SUBREDDITS</code> and
+<code>TELEGRAM_ALLOWED_CHAT_IDS</code> are human-writable.</p>
+
+<table>
+<tr><th>Setting</th><th>Default</th><th>Why you'd touch it</th></tr>
+<tr><td><code>LLM_PROVIDER</code> / <code>EMBEDDING_PROVIDER</code></td><td><code>ollama</code></td><td>Local dev vs cloud. Changing the embedding one invalidates matching.</td></tr>
+<tr><td><code>IDENTITY_RESOLUTION_THRESHOLD</code></td><td>0.65</td><td>Must be recalibrated per embedding model. See <code>diagnose_attachment</code>.</td></tr>
+<tr><td><code>CLUSTERING_MIN_CLUSTER_SIZE</code></td><td>3</td><td>Lower = more, noisier candidates.</td></tr>
+<tr><td><code>SPECIFICITY_GATE</code></td><td>2</td><td>Candidates must score above this to be scored at all.</td></tr>
+<tr><td><code>EXTRACTION_BATCH_SIZE</code> / <code>EMBEDDING_BATCH_SIZE</code></td><td>20 / 64</td><td>LLM cost and rate-limit tuning.</td></tr>
+<tr><td><code>PIPELINE_CRON_HOUR/MINUTE</code></td><td>3 / 30</td><td>Must stay after ingestion, before scoring.</td></tr>
+<tr><td><code>SCORING_CRON_HOUR/MINUTE</code></td><td>4 / 15</td><td>Must stay after the pipeline.</td></tr>
+<tr><td><code>DIGEST_CRON_HOUR/MINUTE</code>, <code>DIGEST_TOP_N</code></td><td>8 / 0, 3</td><td>Delivery time and volume.</td></tr>
+<tr><td><code>REDDIT_DELAY_SECONDS</code></td><td>6.0</td><td>Global floor between <em>any</em> two Reddit calls → ≤10 req/min.</td></tr>
+<tr><td><code>INGESTION_JOB_TIMEOUT_S</code></td><td>180</td><td>Per-connector wall clock (×4 Play Store, ×2 iOS).</td></tr>
+<tr><td><code>SOURCE_RETENTION_DAYS</code> / <code>SIGNAL_RETENTION_DAYS</code></td><td>90 / 30</td><td>Pruning aggressiveness.</td></tr>
+<tr><td><code>BACKFILL_ON_EMPTY</code> / <code>BACKFILL_HISTORY_DAYS</code></td><td>false / 30</td><td>Cold-start behaviour.</td></tr>
+<tr><td><code>MAX_ALERTS_PER_DAY</code></td><td>3</td><td>Notification fatigue control.</td></tr>
+<tr><td><code>NIM_RATE_LIMIT_RPM</code></td><td>40</td><td>NVIDIA NIM quota.</td></tr>
+</table>
+
+<p class="tag">Scoring weights appear twice: <code>WEIGHTS</code> in <code>candidate_scorer.py</code> is the live
+5-dimension map; <code>growth/demand/novelty_weight</code> in <code>Settings</code> (0.41/0.35/0.24) are earlier-era
+placeholders. Read the code, not the env var, when in doubt.</p>
+
+<h2 id="ops">11. Ops, deploy &amp; diagnostics</h2>
+
+<h3>Local</h3>
+<pre><code>uv sync
+cp .env.example .env
+docker compose up -d postgres
+uv run alembic upgrade head
+uv run python scripts/run_backfill.py --history-days 30 --llm-provider ollama
+uv run uvicorn app.main:app --reload       # bot + scheduler + /health on :8000
+</code></pre>
+
+<h3>Checks</h3>
+<pre><code>uv run pytest                 # unit, LLM_PROVIDER=mock, offline + deterministic
+uv run pytest -m integration  # slow e2e walkthrough
+uv run mypy app/
+uv run ruff check app/ tests/
+uv run python -m scripts.diagnose_attachment --days 7   # identity-resolution health
+uv run python scripts/playstore_spike.py                # after any scraper upgrade
+</code></pre>
+
+<h3>Production</h3>
+<ul>
+<li>Single Hetzner CX22 VPS, deployed on every push to <code>main</code>.</li>
+<li>Five GitHub Actions workflows: <code>ci</code>, <code>build-and-push</code>, <code>deploy</code> (health-gated, auto-rollback), <code>rollback</code> (manual, by SHA), <code>prune-ghcr</code> (keeps last 10 <code>sha-*</code> + <code>latest</code>).</li>
+<li>Deploy is <strong>health-gated</strong>: if <code>/health</code> doesn't come up within 60 s, the previous image is restored automatically and a Telegram message reports the rollback.</li>
+<li>Secrets are SOPS+age encrypted in-repo at <code>secrets.enc.env</code>; the private key lives on the VPS at <code>/etc/devtrend/age.key</code>. Edit with <code>sops secrets.enc.env</code>, commit, push.</li>
+</ul>
+
+<h3>Runbook: the four common failures</h3>
+<table>
+<tr><th>Symptom</th><th>Likely cause</th><th>Action</th></tr>
+<tr><td>Attachment rate &lt; 50 %</td><td>Threshold too high for the embedding model</td><td><code>diagnose_attachment</code>, lower <code>IDENTITY_RESOLUTION_THRESHOLD</code></td></tr>
+<tr><td>One candidate absorbs everything</td><td>Threshold too low → monster cluster</td><td>Find candidates with &gt;100 pain points, set <code>is_archived = true</code></td></tr>
+<tr><td>Same themes every day</td><td>Identity resolution not attaching; mixed providers</td><td>Check <code>embedding_model</code> bucket consistency</td></tr>
+<tr><td>Candidates never go dormant</td><td><code>last_evidence_at</code> NULL fallback broken</td><td>Verify the <code>or candidate.created_at</code> branch in <code>lifecycle.py</code></td></tr>
+</table>
+
+<h2 id="traps">12. Traps, gotchas &amp; open gaps</h2>
+<ul>
+<li><strong>No labelled evaluation set.</strong> Tests prove the pipeline <em>behaves</em>, not that extraction or clustering is <em>good</em>. No precision/recall for pain-point extraction or cluster coherence. Self-declared biggest gap.</li>
+<li><strong>Metric mismatch:</strong> clustering Euclidean vs identity resolution cosine.</li>
+<li><strong>HDBSCAN is untuned</strong> — only <code>min_cluster_size</code> is passed; <code>min_samples</code> and <code>cluster_selection_method</code> are defaults. It is also not a declared dependency.</li>
+<li><strong>Single-instance assumption</strong> — in-memory scheduler, in-memory <code>ConnectorRunRegistry</code>, bot long-polling. Two replicas = duplicate jobs and duplicate Telegram sends.</li>
+<li><strong>Play Store scraping</strong> is a community library over a DOM that can change silently, and may violate Google's ToS. The pinned smoke-check script is the early-warning system.</li>
+<li><strong>Reddit RSS caps history</strong>, so backfill depth per subreddit is bounded regardless of <code>--history-days</code>.</li>
+<li><strong>Scoring weights are placeholders</strong> awaiting enough 👍/👎 feedback to calibrate; feedback is currently collected but not consumed.</li>
+<li><strong><code>docs/architecture.md</code> is an empty file.</strong> This guide and the README are the real architecture docs; <code>devtrend-project-document.md</code> and <code>docs/superpowers/</code> hold the design history.</li>
+</ul>
+
+<h2 id="quiz">13. Self-check questions</h2>
+<ol>
+<li>Why does Play Store ingestion run at 02:00 and not 04:00?</li>
+<li>A pain point exists with an embedding but <code>candidate_id IS NULL</code> after the pipeline ran. Name the two stages that could have left it there and why.</li>
+<li>What happens to identity resolution if you flip <code>EMBEDDING_PROVIDER</code> from <code>ollama</code> to <code>nim</code> on a populated database?</li>
+<li>Why does <code>validation_curve()</code> return <code>None</code> rather than <code>100</code> for <code>repo_count == 0</code>?</li>
+<li>Why is <code>dormant</code> checked before <code>hot</code> in <code>derive_lifecycle_state()</code>?</li>
+<li>The scoring job is re-run manually on the same day. Why doesn't the history table double up?</li>
+<li>Ten complaints from <code>r/startups</code> vs ten from ten different subreddits — which scores higher, and which dimension causes it?</li>
+<li>Why does the daily pipeline open five separate DB sessions instead of one?</li>
+<li>Why is <code>misfire_grace_time</code> 300 s for ingestion but 3600 s for the pipeline?</li>
+<li>Why are the LLM/embedding adapters imported <em>inside</em> the job functions in <code>scheduler.py</code>?</li>
+</ol>
+
+<footer>
+Generated from the DevTrend source tree: <code>app/ingestion/scheduler.py</code>,
+<code>app/pipeline/orchestrator.py</code>, <code>app/pipeline/{identity_resolution,clustering,lifecycle}.py</code>,
+<code>app/scoring/{candidate_scorer,dimensions}.py</code>, <code>app/main.py</code>, <code>app/config.py</code>,
+<code>app/models.py</code> and <code>README.md</code>. Defaults shown are code defaults and may be overridden
+by <code>.env</code> / <code>secrets.enc.env</code>.
+</footer>
+
+</div>
+</body>
+</html>
